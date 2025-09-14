@@ -33,4 +33,37 @@ Trong mô hình này, một máy tính có thể gửi một gói tin đến **t
 - **IDE:** Eclipse  
 ## 3. Hình ảnh các chức năng
 
+
 ## 4. Các bước cài đặt
+### Yêu cầu hệ thống
+- JDK 21 hoặc cao hơn
+- Eclipse IDE (khuyến nghị bản mới nhất)
+- Git đã cài trên máy
+
+### Bước 1: Clone project từ GitHub
+```bash
+git clone https://github.com/sam04cd/LTM-Gui-tin-nhan-Broadcast-qua-UDP.git
+```
+###Bước 2: Import project vào Eclipse
+
+- Mở Eclipse
+- Vào File → Import
+- Chọn Existing Projects into Workspace
+- Chọn thư mục project vừa clone về
+- Nhấn Finish
+
+Bước 3: Kiểm tra môi trường
+
+- Đảm bảo project chạy trên JavaSE-21 (hoặc phiên bản JDK bạn đã cài).
+- Nếu thiếu thư viện, vào Project → Properties → Java Build Path để thêm JDK phù hợp.
+
+Bước 4: Chạy ứng dụng
+
+- Mở class Server → Run để khởi động server.
+- Mở class Client → Run để khởi động client.
+- Có thể mở nhiều client cùng lúc để test broadcast.
+
+Bước 5: Gửi và nhận tin nhắn
+
+- Nhập nội dung tin nhắn → nhấn Send.
+- Tất cả client khác trong cùng mạng LAN sẽ nhận được tin nhắn broadcast.
