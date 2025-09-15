@@ -1,0 +1,67 @@
+import javax.swing.*;
+import java.awt.*;
+import java.io.BufferedWriter;
+import java.io.FileWriter;
+import java.io.IOException;
+import java.net.DatagramPacket;
+import java.net.DatagramSocket;
+
+public class Server extends JFrame {
+    private JTextArea logArea;
+    private static final int PORT = 2004;
+    private static final String LOG_FILE = "messages.txt";
+
+    public Server() {
+        setTitle("UDP Broadcast Server");
+        setSize(500, 400);
+        setDefaultCloseOperation(EXIT_ON_CLOSE);
+        setLocationRelativeTo(null);
+
+        logArea = new JTextArea();
+        logArea.setEditable(false);
+        add(new JScrollPane(logArea), BorderLayout.CENTER);
+
+        setVisible(true);
+
+        // Chạy luồng lắng nghe UDP
+        new Thread(this::startServer).start();
+    }
+
+    private void startServer() {
+        byte[] buffer = new byte[1024];
+        try (DatagramSocket socket = new DatagramSocket(PORT)) {
+            appendLog("Server đang lắng nghe trên cổng " + PORT + "...\n");
+
+            while (true) {
+                DatagramPacket packet = new DatagramPacket(buffer, buffer.length);
+                socket.receive(packet);
+
+                String msg = new String(packet.getData(), 0, packet.getLength(), "UTF-8");
+                String from = packet.getAddress().getHostAddress() + ":" + packet.getPort();
+
+                String log = "Nhận từ " + from + " -> " + msg;
+                appendLog(log + "\n");
+                saveMessageToFile(log);
+            }
+        } catch (Exception e) {
+            appendLog("Lỗi Server: " + e.getMessage() + "\n");
+        }
+    }
+
+    private void appendLog(String text) {
+        SwingUtilities.invokeLater(() -> logArea.append(text));
+    }
+
+    private void saveMessageToFile(String message) {
+        try (BufferedWriter writer = new BufferedWriter(new FileWriter(LOG_FILE, true))) {
+            writer.write(message);
+            writer.newLine();
+        } catch (IOException e) {
+            appendLog("Lỗi lưu file: " + e.getMessage() + "\n");
+        }
+    }
+
+    public static void main(String[] args) {
+        SwingUtilities.invokeLater(Server::new);
+    }
+}

@@ -1,0 +1,44 @@
+package sam;
+
+import java.io.BufferedWriter;
+import java.io.FileWriter;
+import java.io.IOException;
+import java.net.DatagramPacket;
+import java.net.DatagramSocket;
+
+public class Server {
+    private static final int PORT = 2004;
+    private static final String LOG_FILE = "messages.txt";
+
+    public static void main(String[] args) {
+        byte[] buffer = new byte[1024];
+
+        try (DatagramSocket socket = new DatagramSocket(PORT)) {
+            System.out.println("Server đang lắng nghe trên cổng " + PORT);
+
+            while (true) {
+                DatagramPacket packet = new DatagramPacket(buffer, buffer.length);
+                socket.receive(packet);
+
+                String msg = new String(packet.getData(), 0, packet.getLength(), "UTF-8");
+                String from = packet.getAddress().getHostAddress() + ":" + packet.getPort();
+
+                System.out.println("Nhận từ " + from + " -> " + msg);
+
+                // Lưu vào file
+                saveMessageToFile(from, msg);
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    private static void saveMessageToFile(String from, String msg) {
+        try (BufferedWriter writer = new BufferedWriter(new FileWriter(LOG_FILE, true))) {
+            writer.write(from + " : " + msg);
+            writer.newLine();
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+}

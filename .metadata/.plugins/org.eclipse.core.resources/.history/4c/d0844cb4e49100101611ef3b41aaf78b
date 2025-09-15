@@ -1,0 +1,88 @@
+package sam;
+
+import javax.swing.*;
+import java.awt.*;
+import java.awt.event.ActionEvent;
+import java.net.*;
+import java.nio.charset.StandardCharsets;
+
+public class Server extends JFrame {
+    private JTextArea logArea;
+    private JTextField inputField;
+    private JButton sendButton;
+
+    private static final int SERVER_PORT = 2004;
+
+    public Server() {
+        setTitle("UDP Server Chat");
+        setSize(500, 400);
+        setDefaultCloseOperation(EXIT_ON_CLOSE);
+        setLocationRelativeTo(null);
+
+        logArea = new JTextArea();
+        logArea.setEditable(false);
+        add(new JScrollPane(logArea), BorderLayout.CENTER);
+
+        JPanel bottom = new JPanel(new BorderLayout());
+        inputField = new JTextField();
+        sendButton = new JButton("Gửi");
+        bottom.add(inputField, BorderLayout.CENTER);
+        bottom.add(sendButton, BorderLayout.EAST);
+        add(bottom, BorderLayout.SOUTH);
+
+        sendButton.addActionListener((ActionEvent e) -> sendBroadcastMessage("Server", inputField.getText()));
+        inputField.addActionListener((ActionEvent e) -> sendBroadcastMessage("Server", inputField.getText()));
+
+        setVisible(true);
+
+        // Luồng nhận tin từ client
+        new Thread(this::receiveFromClients).start();
+    }
+
+    // Gửi broadcast từ server (chỉ khi bấm Gửi)
+    private void sendBroadcastMessage(String sender, String msg) {
+        if (!msg.isEmpty()) {
+            try (DatagramSocket socket = new DatagramSocket()) {
+                String fullMsg = sender + ": " + msg;
+                byte[] data = fullMsg.getBytes(StandardCharsets.UTF_8);
+                InetAddress addr = InetAddress.getByName("255.255.255.255"); // broadcast toàn mạng
+                DatagramPacket packet = new DatagramPacket(data, data.length, addr, 2005); // port client sẽ mở
+
+                socket.setBroadcast(true);
+                socket.send(packet);
+                logArea.append(fullMsg + "\n");
+                inputField.setText("");
+            } catch (Exception ex) {
+                logArea.append("Lỗi gửi: " + ex.getMessage() + "\n");
+            }
+        }
+    }
+
+    private void receiveFromClients() {
+        try (DatagramSocket socket = new DatagramSocket(SERVER_PORT)) {
+            byte[] buffer = new byte[1024];
+            while (true) {
+                DatagramPacket packet = new DatagramPacket(buffer, buffer.length);
+                socket.receive(packet);
+                String msg = new String(packet.getData(), 0, packet.getLength(), StandardCharsets.UTF_8);
+                InetAddress clientAddr = packet.getAddress();
+                int clientPort = packet.getPort();
+
+                String log = "Client (" + clientAddr.getHostAddress() + "): " + msg;
+                SwingUtilities.invokeLater(() -> logArea.append(log + "\n"));
+
+                // Gửi phản hồi trực tiếp lại đúng client vừa gửi
+                String reply = "Server: " + msg;
+                byte[] replyData = reply.getBytes(StandardCharsets.UTF_8);
+                DatagramPacket sendPacket = new DatagramPacket(replyData, replyData.length, clientAddr, clientPort);
+                socket.send(sendPacket);
+            }
+        } catch (Exception e) {
+            logArea.append("Lỗi nhận từ client: " + e.getMessage() + "\n");
+        }
+    }
+
+    public static void main(String[] args) {
+        SwingUtilities.invokeLater(Server::new);
+    }
+}

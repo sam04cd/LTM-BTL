@@ -1,0 +1,71 @@
+package sam;
+
+import javax.swing.*;
+import java.awt.*;
+import java.net.*;
+
+public class Client extends JFrame {
+    private JTextArea chatArea;
+    private JTextField inputField;
+
+    private static final int SERVER_PORT = 2004;  // gửi đến server
+    private static final int CLIENT_PORT = 2005;  // nhận broadcast từ server
+    private static String SERVER_IP;
+
+    public Client(String serverIP) {
+        SERVER_IP = serverIP;
+
+        setTitle("UDP Client");
+        setSize(400, 300);
+        setDefaultCloseOperation(EXIT_ON_CLOSE);
+        setLocationRelativeTo(null);
+
+        chatArea = new JTextArea();
+        chatArea.setEditable(false);
+        add(new JScrollPane(chatArea), BorderLayout.CENTER);
+
+        inputField = new JTextField();
+        inputField.addActionListener(e -> sendMessage(inputField.getText()));
+        add(inputField, BorderLayout.SOUTH);
+
+        setVisible(true);
+
+        new Thread(this::receiveFromServer).start();
+    }
+
+    private void sendMessage(String msg) {
+        if (!msg.isEmpty()) {
+            try (DatagramSocket socket = new DatagramSocket()) {
+                byte[] data = msg.getBytes("UTF-8");
+                DatagramPacket packet = new DatagramPacket(data, data.length,
+                        InetAddress.getByName(SERVER_IP), SERVER_PORT);
+
+                socket.send(packet);
+                chatArea.append("Tôi: " + msg + "\n");
+                inputField.setText("");
+            } catch (Exception e) {
+                chatArea.append("Lỗi gửi: " + e.getMessage() + "\n");
+            }
+        }
+    }
+
+    private void receiveFromServer() {
+        try (DatagramSocket socket = new DatagramSocket(CLIENT_PORT)) {
+            byte[] buf = new byte[1024];
+            while (true) {
+                DatagramPacket packet = new DatagramPacket(buf, buf.length);
+                socket.receive(packet);
+
+                String msg = new String(packet.getData(), 0, packet.getLength(), "UTF-8");
+                chatArea.append(msg + "\n");
+            }
+        } catch (Exception e) {
+            chatArea.append("Lỗi nhận: " + e.getMessage() + "\n");
+        }
+    }
+
+    public static void main(String[] args) {
+        String ip = JOptionPane.showInputDialog("Nhập IP Server:");
+        SwingUtilities.invokeLater(() -> new Client(ip));
+    }
+}

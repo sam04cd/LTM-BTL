@@ -1,0 +1,86 @@
+package sam;
+
+import javax.swing.*;
+import java.awt.*;
+import java.awt.event.ActionEvent;
+import java.net.DatagramPacket;
+import java.net.DatagramSocket;
+import java.net.InetAddress;
+
+public class Server extends JFrame {
+    private JTextArea chatArea;
+    private JTextField inputField;
+    private JButton sendButton;
+
+    private static final int SERVER_PORT = 2004; // Server lắng nghe
+    private static final int CLIENT_PORT = 2005; // Client lắng nghe
+    private static final String BROADCAST_ADDRESS = "255.255.255.255";
+
+    public Server() {
+        setTitle("UDP Broadcast Server Chat");
+        setSize(500, 400);
+        setDefaultCloseOperation(EXIT_ON_CLOSE);
+        setLocationRelativeTo(null);
+
+        chatArea = new JTextArea();
+        chatArea.setEditable(false);
+        add(new JScrollPane(chatArea), BorderLayout.CENTER);
+
+        JPanel panel = new JPanel(new BorderLayout());
+        inputField = new JTextField();
+        sendButton = new JButton("Gửi");
+
+        panel.add(inputField, BorderLayout.CENTER);
+        panel.add(sendButton, BorderLayout.EAST);
+        add(panel, BorderLayout.SOUTH);
+
+        sendButton.addActionListener((ActionEvent e) -> sendMessage());
+        inputField.addActionListener((ActionEvent e) -> sendMessage());
+
+        setVisible(true);
+
+        // Luồng lắng nghe
+        new Thread(this::receiveMessages).start();
+    }
+
+    private void sendMessage() {
+        String message = inputField.getText().trim();
+        if (!message.isEmpty()) {
+            try (DatagramSocket socket = new DatagramSocket()) {
+                socket.setBroadcast(true);
+                byte[] data = message.getBytes("UTF-8");
+                InetAddress address = InetAddress.getByName(BROADCAST_ADDRESS);
+
+                DatagramPacket packet = new DatagramPacket(data, data.length, address, CLIENT_PORT);
+                socket.send(packet);
+
+                chatArea.append("Server: " + message + "\n");
+                inputField.setText("");
+            } catch (Exception ex) {
+                chatArea.append("Lỗi gửi: " + ex.getMessage() + "\n");
+            }
+        }
+    }
+
+    private void receiveMessages() {
+        try (DatagramSocket socket = new DatagramSocket(SERVER_PORT)) {
+            byte[] buffer = new byte[1024];
+            while (true) {
+                DatagramPacket packet = new DatagramPacket(buffer, buffer.length);
+                socket.receive(packet);
+                String msg = new String(packet.getData(), 0, packet.getLength(), "UTF-8");
+                String from = packet.getAddress().getHostAddress();
+
+                SwingUtilities.invokeLater(() ->
+                    chatArea.append(from + ": " + msg + "\n")
+                );
+            }
+        } catch (Exception e) {
+            chatArea.append("Lỗi nhận: " + e.getMessage() + "\n");
+        }
+    }
+
+    public static void main(String[] args) {
+        SwingUtilities.invokeLater(Server::new);
+    }
+}

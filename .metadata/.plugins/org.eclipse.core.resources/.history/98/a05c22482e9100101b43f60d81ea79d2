@@ -1,0 +1,64 @@
+package sam;
+
+import javax.swing.*;
+import java.awt.*;
+import java.awt.event.ActionEvent;
+import java.net.DatagramPacket;
+import java.net.DatagramSocket;
+import java.net.InetAddress;
+
+public class Client extends JFrame {
+    private JTextArea textArea;
+    private JTextField inputField;
+    private JButton sendButton;
+
+    private static final int PORT = 2004;
+    private static final String BROADCAST_ADDRESS = "255.255.255.255"; // Có thể đổi sang subnet như 192.168.1.255
+
+    public Client() {
+        setTitle("UDP Broadcast Client");
+        setSize(400, 300);
+        setDefaultCloseOperation(EXIT_ON_CLOSE);
+        setLayout(new BorderLayout());
+
+        textArea = new JTextArea();
+        textArea.setEditable(false);
+        add(new JScrollPane(textArea), BorderLayout.CENTER);
+
+        JPanel panel = new JPanel(new BorderLayout());
+        inputField = new JTextField();
+        sendButton = new JButton("Gửi");
+
+        panel.add(inputField, BorderLayout.CENTER);
+        panel.add(sendButton, BorderLayout.EAST);
+
+        add(panel, BorderLayout.SOUTH);
+
+        sendButton.addActionListener((ActionEvent e) -> sendMessage());
+    }
+
+    private void sendMessage() {
+        String message = inputField.getText().trim();
+        if (!message.isEmpty()) {
+            try (DatagramSocket socket = new DatagramSocket()) {
+                socket.setBroadcast(true);
+                byte[] data = message.getBytes("UTF-8");
+
+                InetAddress address = InetAddress.getByName(BROADCAST_ADDRESS);
+                DatagramPacket packet = new DatagramPacket(data, data.length, address, PORT);
+
+                socket.send(packet);
+                textArea.append("Đã gửi: " + message + "\n");
+                inputField.setText("");
+            } catch (Exception ex) {
+                textArea.append("Lỗi gửi: " + ex.getMessage() + "\n");
+            }
+        }
+    }
+
+    public static void main(String[] args) {
+        SwingUtilities.invokeLater(() -> {
+            new Client().setVisible(true);
+        });
+    }
+}

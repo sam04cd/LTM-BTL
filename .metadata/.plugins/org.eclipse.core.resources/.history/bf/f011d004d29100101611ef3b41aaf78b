@@ -1,0 +1,112 @@
+package sam;
+
+import javax.swing.*;
+import java.awt.*;
+import java.awt.event.ActionEvent;
+import java.net.*;
+
+public class Server extends JFrame {
+    private JTextArea logArea;
+    private JTextField inputField;
+    private JButton sendButton;
+
+    private static final int SERVER_PORT = 2004; // server nhận tin từ client
+    private static final int CLIENT_PORT = 2005; // client nhận tin từ server
+    private static final String BROADCAST_IP = "172.16.22.12";
+
+    public Server() {
+        setTitle("UDP Server Chat");
+        setSize(550, 420);
+        setDefaultCloseOperation(EXIT_ON_CLOSE);
+        setLocationRelativeTo(null);
+
+        // đổi màu nền chính
+        getContentPane().setBackground(new Color(230, 240, 250));
+        setLayout(new BorderLayout(10, 10));
+
+        // Khung chat
+        logArea = new JTextArea();
+        logArea.setEditable(false);
+        logArea.setFont(new Font("Segoe UI", Font.PLAIN, 14));
+        logArea.setBackground(new Color(250, 250, 250));
+        logArea.setForeground(new Color(40, 40, 40));
+        logArea.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
+
+        JScrollPane scrollPane = new JScrollPane(logArea);
+        scrollPane.setBorder(BorderFactory.createLineBorder(new Color(150, 180, 220), 2, true));
+        add(scrollPane, BorderLayout.CENTER);
+
+        // Panel nhập liệu
+        JPanel bottom = new JPanel(new BorderLayout(5, 5));
+        bottom.setBackground(new Color(230, 240, 250));
+
+        inputField = new JTextField();
+        inputField.setFont(new Font("Segoe UI", Font.PLAIN, 14));
+        inputField.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createLineBorder(new Color(180, 200, 230), 2, true),
+                BorderFactory.createEmptyBorder(5, 10, 5, 10)
+        ));
+
+        sendButton = new JButton("✉ Gửi");
+        sendButton.setBackground(new Color(80, 140, 250));
+        sendButton.setForeground(Color.WHITE);
+        sendButton.setFocusPainted(false);
+        sendButton.setFont(new Font("Segoe UI", Font.BOLD, 14));
+        sendButton.setBorder(BorderFactory.createEmptyBorder(8, 15, 8, 15));
+
+        bottom.add(inputField, BorderLayout.CENTER);
+        bottom.add(sendButton, BorderLayout.EAST);
+        add(bottom, BorderLayout.SOUTH);
+
+        // sự kiện nút gửi
+        sendButton.addActionListener((ActionEvent e) -> sendMessage("Server", inputField.getText()));
+        inputField.addActionListener((ActionEvent e) -> sendMessage("Server", inputField.getText()));
+
+        setVisible(true);
+
+        // Luồng nhận tin từ client
+        new Thread(this::receiveFromClients).start();
+    }
+
+    private void sendMessage(String sender, String msg) {
+        if (!msg.isEmpty()) {
+            try (DatagramSocket socket = new DatagramSocket()) {
+                socket.setBroadcast(true);
+                String fullMsg = sender + ": " + msg;
+                byte[] data = fullMsg.getBytes("UTF-8");
+                InetAddress addr = InetAddress.getByName(BROADCAST_IP);
+                DatagramPacket packet = new DatagramPacket(data, data.length, addr, CLIENT_PORT);
+
+                socket.send(packet);
+                logArea.append(fullMsg + "\n");
+                inputField.setText("");
+            } catch (Exception ex) {
+                logArea.append("Lỗi gửi: " + ex.getMessage() + "\n");
+            }
+        }
+    }
+
+    private void receiveFromClients() {
+        try (DatagramSocket socket = new DatagramSocket(SERVER_PORT)) {
+            byte[] buffer = new byte[1024];
+            while (true) {
+                DatagramPacket packet = new DatagramPacket(buffer, buffer.length);
+                socket.receive(packet);
+                String msg = new String(packet.getData(), 0, packet.getLength(), "UTF-8");
+                String from = packet.getAddress().getHostAddress();
+
+                String log = "Client (" + from + "): " + msg;
+                SwingUtilities.invokeLater(() -> logArea.append(log + "\n"));
+
+                // forward lại cho tất cả client
+                sendMessage("Client " + from, msg);
+            }
+        } catch (Exception e) {
+            logArea.append("Lỗi nhận từ client: " + e.getMessage() + "\n");
+        }
+    }
+
+    public static void main(String[] args) {
+        SwingUtilities.invokeLater(Server::new);
+    }
+}

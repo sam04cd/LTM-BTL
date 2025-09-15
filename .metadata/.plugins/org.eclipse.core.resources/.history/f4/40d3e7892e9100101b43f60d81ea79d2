@@ -1,0 +1,49 @@
+package sam;
+
+import javax.swing.*;
+import java.awt.*;
+import java.net.*;
+
+public class Client extends JFrame {
+    private JTextArea chatArea;
+    private static final int CLIENT_PORT = 8888; // port lắng nghe
+
+    public Client() {
+        setTitle("UDP Client Broadcast");
+        setSize(400, 300);
+        setDefaultCloseOperation(EXIT_ON_CLOSE);
+        setLocationRelativeTo(null);
+
+        chatArea = new JTextArea();
+        chatArea.setEditable(false);
+        add(new JScrollPane(chatArea), BorderLayout.CENTER);
+
+        setVisible(true);
+
+        // Luồng nhận tin broadcast
+        new Thread(this::receiveMessages).start();
+    }
+
+    private void receiveMessages() {
+        try (DatagramSocket socket = new DatagramSocket(CLIENT_PORT)) {
+            socket.setBroadcast(true);
+            byte[] buffer = new byte[1024];
+            while (true) {
+                DatagramPacket packet = new DatagramPacket(buffer, buffer.length);
+                socket.receive(packet);
+                String msg = new String(packet.getData(), 0, packet.getLength(), "UTF-8");
+                String from = packet.getAddress().getHostAddress();
+
+                SwingUtilities.invokeLater(() ->
+                    chatArea.append("Server (" + from + "): " + msg + "\n")
+                );
+            }
+        } catch (Exception e) {
+            chatArea.append("Lỗi nhận: " + e.getMessage() + "\n");
+        }
+    }
+
+    public static void main(String[] args) {
+        SwingUtilities.invokeLater(Client::new);
+    }
+}
