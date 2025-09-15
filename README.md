@@ -32,7 +32,14 @@ Trong mô hình này, một máy tính có thể gửi một gói tin đến **t
 - **Giao thức mạng:** UDP (User Datagram Protocol)  
 - **IDE:** Eclipse  
 ## 3. Hình ảnh các chức năng
+<img width="604" height="487" alt="image" src="https://github.com/user-attachments/assets/532f6192-8716-4fb3-8720-c859e4b560bb" />
+<p align = "center">Hình 1: Giao diện server </p>
 
+<img width="338" height="153" alt="image" src="https://github.com/user-attachments/assets/9820f2cd-dc5e-4d80-9a50-65f33be45bc1" />
+<p align = "center">Hình 2: Nhập ip server </p>
+
+<img width="620" height="476" alt="image" src="https://github.com/user-attachments/assets/7d538fc9-f57e-4903-849d-dd319b26f5cd" />
+<p align = "center">Hình 3: Giao diện client </p>
 
 ## 4. Các bước cài đặt
 ### Yêu cầu hệ thống
