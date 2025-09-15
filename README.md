@@ -4,7 +4,7 @@
     </a>
 </h2>
 <h2 align="center">
-   Gửi tin nhắn Broadcast qua UDP
+   GỬI TIN NHẮN BROADCAST QUA UDP
 </h2>
 <div align="center">
     <p align="center">
