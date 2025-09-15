@@ -21,10 +21,16 @@
 
 ## 1. Giới thiệu
 
-Trong mô hình này, một máy tính có thể gửi một gói tin đến **tất cả các thiết bị trong cùng mạng LAN** mà không cần biết địa chỉ IP cụ thể của từng máy. Điều này giúp việc **truyền thông điệp nhanh chóng và tiện lợi**, đặc biệt hữu ích trong các tình huống như:  
-- Gửi thông báo hệ thống cho nhiều người dùng.  
-- Ứng dụng chat nội bộ trong mạng LAN.  
-- Tự động phát hiện dịch vụ (service discovery).  
+Đề tài tập trung xây dựng một ứng dụng chat đơn giản cho phép các máy tính trong cùng mạng LAN **trao đổi thông tin với nhau thông qua giao thức UDP (User Datagram Protocol) và cơ chế broadcast**.
+Thay vì gửi tin nhắn trực tiếp tới một máy cụ thể, ứng dụng sẽ **gửi một gói tin broadcast đến tất cả các thiết bị trong mạng**, giúp **tất cả các client đang lắng nghe trên cùng một cổng (port)** đều nhận được cùng một tin nhắn.
+
+Việc sử dụng UDP giúp việc truyền dữ liệu trở nên **nhanh, gọn, không cần thiết lập kết nối (connectionless)** như TCP.  
+Tuy không đảm bảo tin nhắn đến đúng thứ tự, nhưng UDP phù hợp cho các ứng dụng cần **gửi thông báo nhanh đến nhiều người cùng lúc** như:  
+- Chat nội bộ trong mạng LAN  
+- Gửi thông báo hệ thống  
+- Tìm kiếm và khám phá thiết bị IoT trong mạng
+
+---
 
 ## 2. Công nghệ sử dụng
 - **Ngôn ngữ lập trình:** Java (JDK 21)  
