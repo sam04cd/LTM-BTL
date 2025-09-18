@@ -7,6 +7,7 @@ import java.net.*;
 public class Server extends JFrame {
     private JTextArea logArea;
     private JTextField inputField;
+    private JButton sendButton;
 
     private static final int SERVER_PORT = 2004;  // nhận từ client
     private static final int CLIENT_PORT = 2005;  // gửi broadcast đến client
@@ -18,16 +19,27 @@ public class Server extends JFrame {
         setDefaultCloseOperation(EXIT_ON_CLOSE);
         setLocationRelativeTo(null);
 
+        // --- khu vực hiển thị ---
         logArea = new JTextArea();
         logArea.setEditable(false);
         add(new JScrollPane(logArea), BorderLayout.CENTER);
 
+        // --- khu vực nhập + nút gửi ---
         inputField = new JTextField();
+        sendButton = new JButton("Gửi");
+
+        JPanel bottomPanel = new JPanel(new BorderLayout());
+        bottomPanel.add(inputField, BorderLayout.CENTER);
+        bottomPanel.add(sendButton, BorderLayout.EAST);
+        add(bottomPanel, BorderLayout.SOUTH);
+
+        // Nhấn Enter hoặc nút Gửi đều gửi được
         inputField.addActionListener(e -> sendMessage(inputField.getText()));
-        add(inputField, BorderLayout.SOUTH);
+        sendButton.addActionListener(e -> sendMessage(inputField.getText()));
 
         setVisible(true);
 
+        // luồng nhận dữ liệu từ client
         new Thread(this::receiveFromClients).start();
     }
 
@@ -37,8 +49,10 @@ public class Server extends JFrame {
                 socket.setBroadcast(true);
                 String fullMsg = "Server: " + msg;
                 byte[] data = fullMsg.getBytes("UTF-8");
-                DatagramPacket packet = new DatagramPacket(data, data.length,
-                        InetAddress.getByName(BROADCAST_IP), CLIENT_PORT);
+                DatagramPacket packet = new DatagramPacket(
+                        data, data.length,
+                        InetAddress.getByName(BROADCAST_IP), CLIENT_PORT
+                );
 
                 socket.send(packet);
                 logArea.append(fullMsg + "\n");
@@ -60,8 +74,8 @@ public class Server extends JFrame {
                 String from = packet.getAddress().getHostAddress();
                 logArea.append("Client (" + from + "): " + msg + "\n");
 
-                // broadcast lại cho toàn bộ client
-                sendMessage("Client " + from + ": " + msg);
+                // Gửi broadcast lại cho toàn bộ client
+                sendMessage(   msg);
             }
         } catch (Exception e) {
             logArea.append("Lỗi nhận: " + e.getMessage() + "\n");

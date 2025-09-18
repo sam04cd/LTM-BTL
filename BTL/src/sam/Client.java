@@ -7,6 +7,7 @@ import java.net.*;
 public class Client extends JFrame {
     private JTextArea chatArea;
     private JTextField inputField;
+    private JButton sendButton;
 
     private static final int SERVER_PORT = 2004;  // gửi đến server
     private static final int CLIENT_PORT = 2005;  // nhận broadcast từ server
@@ -20,16 +21,27 @@ public class Client extends JFrame {
         setDefaultCloseOperation(EXIT_ON_CLOSE);
         setLocationRelativeTo(null);
 
+        // --- khu vực hiển thị ---
         chatArea = new JTextArea();
         chatArea.setEditable(false);
         add(new JScrollPane(chatArea), BorderLayout.CENTER);
 
+        // --- khu vực nhập + nút gửi ---
         inputField = new JTextField();
+        sendButton = new JButton("Gửi");
+
+        JPanel bottomPanel = new JPanel(new BorderLayout());
+        bottomPanel.add(inputField, BorderLayout.CENTER);
+        bottomPanel.add(sendButton, BorderLayout.EAST);
+        add(bottomPanel, BorderLayout.SOUTH);
+
+        // nhấn Enter hoặc nút Gửi đều gửi được
         inputField.addActionListener(e -> sendMessage(inputField.getText()));
-        add(inputField, BorderLayout.SOUTH);
+        sendButton.addActionListener(e -> sendMessage(inputField.getText()));
 
         setVisible(true);
 
+        // luồng nhận tin từ server
         new Thread(this::receiveFromServer).start();
     }
 
