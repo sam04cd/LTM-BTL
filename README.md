@@ -81,7 +81,7 @@ Bước 5: Gửi và nhận tin nhắn
 - Nhập nội dung tin nhắn → nhấn Send.
 - Tất cả client khác trong cùng mạng LAN sẽ nhận được tin nhắn broadcast.
 
-## 📬 5. Liên hệ
+## 📬 Thông tin liên hệ
 - Họ và tên: Mẫn Bá Sâm
 - Lớp: CNTT 16-03
 - Email: sam40741@gmail.com
