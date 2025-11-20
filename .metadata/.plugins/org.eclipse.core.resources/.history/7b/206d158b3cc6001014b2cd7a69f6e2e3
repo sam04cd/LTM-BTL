@@ -1,0 +1,355 @@
+package sam;
+
+import com.formdev.flatlaf.FlatDarkLaf;
+
+import javax.swing.*;
+import javax.swing.border.EmptyBorder;
+import java.awt.*;
+import java.awt.event.KeyAdapter;
+import java.awt.event.KeyEvent;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
+import java.awt.image.BufferedImage;
+import java.io.*;
+import java.net.*;
+import java.nio.charset.StandardCharsets;
+
+public class Client {
+
+    private static final String SERVER_IP = "127.0.0.1";
+    private static final int SERVER_UDP_PORT = 5000;
+    private static final int CLIENT_UDP_PORT = 5001;
+    private static final int TCP_FILE_PORT = 6000;
+
+    private String username;
+    private DatagramSocket recvSocket;
+    private JFrame frame;
+    private JPanel panelMessages;
+    private JScrollPane scrollPane;
+    private JTextField input;
+    private JTextArea onlineArea;
+    private final File downloadsDir = new File("downloads");
+
+    public Client() {
+        if (!downloadsDir.exists()) downloadsDir.mkdirs();
+
+        try {
+            UIManager.setLookAndFeel(new FlatDarkLaf());
+        } catch (Exception ex) {
+            ex.printStackTrace();
+        }
+
+        username = JOptionPane.showInputDialog(null, "Nhập tên của bạn:", "Đăng nhập", JOptionPane.PLAIN_MESSAGE);
+        if (username == null || username.trim().isEmpty()) username = "User" + (int)(Math.random()*9999);
+        username = username.trim();
+
+        createUI();
+        startUdpListener();
+        sendUdp("HELLO:" + username);
+
+        Runtime.getRuntime().addShutdownHook(new Thread(() -> sendUdp("BYE:" + username)));
+    }
+
+    private void createUI() {
+        frame = new JFrame("Chat • " + username);
+        frame.setSize(1100, 720);
+        frame.setMinimumSize(new Dimension(800, 600));
+        frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+        frame.getContentPane().setBackground(new Color(30, 30, 36));
+
+        // Header
+        JPanel header = new JPanel(new BorderLayout());
+        header.setBackground(new Color(43, 43, 51));
+        header.setBorder(BorderFactory.createMatteBorder(0, 0, 1, 0, new Color(60, 60, 70)));
+        header.setPreferredSize(new Dimension(0, 65));
+
+        JLabel title = new JLabel("Chat Room", SwingConstants.CENTER);
+        title.setFont(new Font("Segoe UI", Font.BOLD, 20));
+        title.setForeground(Color.WHITE);
+        header.add(title, BorderLayout.CENTER);
+
+        JLabel status = new JLabel("● Online");
+        status.setForeground(new Color(80, 255, 80));
+        status.setBorder(BorderFactory.createEmptyBorder(0, 0, 0, 20));
+        header.add(status, BorderLayout.EAST);
+
+        // Messages panel
+        panelMessages = new JPanel();
+        panelMessages.setLayout(new BoxLayout(panelMessages, BoxLayout.Y_AXIS));
+        panelMessages.setBackground(new Color(35, 35, 42));
+
+        scrollPane = new JScrollPane(panelMessages);
+        scrollPane.setBorder(null);
+        scrollPane.setHorizontalScrollBarPolicy(JScrollPane.HORIZONTAL_SCROLLBAR_NEVER);
+        scrollPane.getVerticalScrollBar().setUnitIncrement(16);
+
+        // Sidebar
+        JPanel sidebar = new JPanel(new BorderLayout());
+        sidebar.setBackground(new Color(43, 43, 51));
+        sidebar.setPreferredSize(new Dimension(280, 0));
+        sidebar.setBorder(BorderFactory.createMatteBorder(1, 1, 0, 0, new Color(60, 60, 70)));
+
+        JLabel onlineTitle = new JLabel("Đang online");
+        onlineTitle.setFont(new Font("Segoe UI", Font.BOLD, 16));
+        onlineTitle.setForeground(new Color(100, 200, 255));
+        onlineTitle.setBorder(BorderFactory.createEmptyBorder(20, 20, 10, 0));
+        sidebar.add(onlineTitle, BorderLayout.NORTH);
+
+        onlineArea = new JTextArea();
+        onlineArea.setEditable(false);
+        onlineArea.setBackground(new Color(43, 43, 51));
+        onlineArea.setForeground(Color.WHITE);
+        onlineArea.setFont(new Font("Segoe UI", Font.PLAIN, 15));
+        sidebar.add(new JScrollPane(onlineArea), BorderLayout.CENTER);
+
+        // Input panel
+        JPanel inputPanel = new JPanel(new BorderLayout(10, 10));
+        inputPanel.setBackground(new Color(43, 43, 51));
+        inputPanel.setBorder(BorderFactory.createEmptyBorder(15, 15, 15, 15));
+
+        JButton emojiBtn = new JButton("😊");
+        JButton attachBtn = new JButton("📎");
+        styleIconButton(emojiBtn);
+        styleIconButton(attachBtn);
+
+        JPopupMenu emojiMenu = new JPopupMenu();
+        String[] emojis = {"😀","😂","😍","🤔","😢","😡","👍","👎","❤️","🔥","🎉","🚀"};
+        for (String e : emojis) {
+            JMenuItem item = new JMenuItem(e);
+            item.setFont(new Font("Segoe UI", Font.PLAIN, 22));
+            item.addActionListener(ev -> input.setText(input.getText() + e));
+            emojiMenu.add(item);
+        }
+        emojiBtn.addActionListener(e -> emojiMenu.show(emojiBtn, 0, emojiBtn.getHeight()));
+
+        attachBtn.addActionListener(e -> {
+            JFileChooser fc = new JFileChooser();
+            if (fc.showOpenDialog(frame) == JFileChooser.APPROVE_OPTION) {
+                new Thread(() -> uploadFile(fc.getSelectedFile())).start();
+            }
+        });
+
+        JPanel left = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
+        left.setOpaque(false);
+        left.add(emojiBtn);
+        left.add(attachBtn);
+        inputPanel.add(left, BorderLayout.WEST);
+
+        input = new JTextField();
+        input.setFont(new Font("Segoe UI", Font.PLAIN, 16));
+        input.setForeground(Color.WHITE);
+        input.setBackground(new Color(60, 60, 70));
+        input.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createLineBorder(new Color(80, 80, 90), 2, true),
+                BorderFactory.createEmptyBorder(12, 12, 12, 12)));
+        input.setCaretColor(Color.WHITE);
+        input.addKeyListener(new KeyAdapter() {
+            public void keyPressed(KeyEvent e) {
+                if (e.getKeyCode() == KeyEvent.VK_ENTER) {
+                    sendMessage();
+                }
+            }
+        });
+        inputPanel.add(input, BorderLayout.CENTER);
+
+        JButton sendBtn = new JButton("➤");
+        sendBtn.setFont(new Font("Segoe UI", Font.BOLD, 18));
+        sendBtn.setBackground(new Color(0, 122, 255));
+        sendBtn.setForeground(Color.WHITE);
+        sendBtn.setBorderPainted(false);
+        sendBtn.setFocusPainted(false);
+        sendBtn.addActionListener(e -> sendMessage());
+        inputPanel.add(sendBtn, BorderLayout.EAST);
+
+        // Add all
+        frame.add(header, BorderLayout.NORTH);
+        frame.add(scrollPane, BorderLayout.CENTER);
+        frame.add(sidebar, BorderLayout.EAST);
+        frame.add(inputPanel, BorderLayout.SOUTH);
+
+        frame.setLocationRelativeTo(null);
+        frame.setVisible(true);
+    }
+
+    private void styleIconButton(JButton btn) {
+        btn.setFont(new Font("Segoe UI", Font.BOLD, 20));
+        btn.setForeground(new Color(180, 180, 200));
+        btn.setBackground(new Color(70, 70, 80));
+        btn.setBorderPainted(false);
+        btn.setFocusPainted(false);
+        btn.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+        btn.addMouseListener(new MouseAdapter() {
+            public void mouseEntered(MouseEvent e) { btn.setBackground(new Color(90, 90, 100)); }
+            public void mouseExited(MouseEvent e) { btn.setBackground(new Color(70, 70, 80)); }
+        });
+    }
+
+    private void sendMessage() {
+        String text = input.getText().trim();
+        if (text.isEmpty()) return;
+        addMessageBubble(username, text, true);
+        sendUdp(username + ": " + text);
+        input.setText("");
+    }
+
+    private void addMessageBubble(String name, String message, boolean mine) {
+        JPanel wrapper = new JPanel(new GridBagLayout());
+        wrapper.setOpaque(false);
+        wrapper.setBorder(BorderFactory.createEmptyBorder(8, 20, 8, 20));
+
+        RoundedPanel bubble = new RoundedPanel(mine ? new Color(0, 122, 255) : new Color(60, 60, 70), 20);
+        bubble.setLayout(new BoxLayout(bubble, BoxLayout.Y_AXIS));
+        bubble.setBorder(BorderFactory.createEmptyBorder(10, 14, 10, 14));
+
+        JLabel nameLabel = new JLabel(name);
+        nameLabel.setFont(new Font("Segoe UI", Font.BOLD, 13));
+        nameLabel.setForeground(mine ? new Color(220, 240, 255) : new Color(180, 180, 180));
+
+        JLabel msgLabel = new JLabel("<html><div style='max-width: 500px;'>" + escapeHtml(message) + "</div></html>");
+        msgLabel.setFont(new Font("Segoe UI", Font.PLAIN, 16));
+        msgLabel.setForeground(Color.WHITE);
+
+        bubble.add(nameLabel);
+        bubble.add(Box.createVerticalStrut(4));
+        bubble.add(msgLabel);
+
+        GridBagConstraints gbc = new GridBagConstraints();
+        gbc.weightx = 1.0;
+        gbc.fill = GridBagConstraints.HORIZONTAL;
+
+        if (mine) {
+            gbc.anchor = GridBagConstraints.EAST;
+            wrapper.add(bubble, gbc);
+        } else {
+            JLabel avatar = new JLabel(makeAvatar(name));
+            gbc.anchor = GridBagConstraints.WEST;
+            wrapper.add(avatar, gbc);
+            gbc.gridx = 1;
+            gbc.insets = new Insets(0, 10, 0, 0);
+            wrapper.add(bubble, gbc);
+        }
+
+        panelMessages.add(wrapper);
+        panelMessages.add(Box.createVerticalStrut(8));
+        scrollToBottom();
+    }
+
+    private ImageIcon makeAvatar(String name) {
+        String initial = name.substring(0, 1).toUpperCase();
+        int size = 42;
+        BufferedImage img = new BufferedImage(size, size, BufferedImage.TYPE_INT_ARGB);
+        Graphics2D g2 = img.createGraphics();
+        g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+        g2.setColor(new Color(100, 100, 140));
+        g2.fillOval(0, 0, size, size);
+        g2.setColor(Color.WHITE);
+        g2.setFont(new Font("Segoe UI", Font.BOLD, 20));
+        FontMetrics fm = g2.getFontMetrics();
+        int x = (size - fm.stringWidth(initial)) / 2;
+        int y = (size - fm.getHeight()) / 2 + fm.getAscent();
+        g2.drawString(initial, x, y);
+        g2.dispose();
+        return new ImageIcon(img);
+    }
+
+    private void scrollToBottom() {
+        SwingUtilities.invokeLater(() -> scrollPane.getVerticalScrollBar().setValue(scrollPane.getVerticalScrollBar().getMaximum()));
+    }
+
+    private String escapeHtml(String s) {
+        return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("\n", "<br>");
+    }
+
+    // ================= NETWORK =================
+    private void startUdpListener() {
+        new Thread(() -> {
+            try {
+                recvSocket = new DatagramSocket(CLIENT_UDP_PORT);
+                byte[] buf = new byte[8192];
+                while (true) {
+                    DatagramPacket p = new DatagramPacket(buf, buf.length);
+                    recvSocket.receive(p);
+                    String msg = new String(p.getData(), 0, p.getLength(), StandardCharsets.UTF_8).trim();
+
+                    if (msg.startsWith("ONLINE:")) {
+                        String list = msg.substring(7);
+                        SwingUtilities.invokeLater(() -> {
+                            onlineArea.setText(list.replace(",", "\n"));
+                            frame.setTitle("Chat • " + username + " (" + list.split(",").length + " online)");
+                        });
+                    } else if (msg.startsWith("FILE:")) {
+                        String[] parts = msg.split(":", 3);
+                        if (parts.length >= 3) {
+                            addMessageBubble("System", "File mới: " + parts[1] + " từ " + parts[2], false);
+                        }
+                    } else {
+                        addMessageBubble("Server", msg, false);
+                    }
+                }
+            } catch (Exception e) { e.printStackTrace(); }
+        }).start();
+    }
+
+    private void sendUdp(String text) {
+        new Thread(() -> {
+            try {
+                byte[] data = text.getBytes(StandardCharsets.UTF_8);
+                DatagramPacket p = new DatagramPacket(data, data.length, InetAddress.getByName(SERVER_IP), SERVER_UDP_PORT);
+                DatagramSocket s = new DatagramSocket();
+                s.send(p);
+                s.close();
+            } catch (Exception e) { e.printStackTrace(); }
+        }).start();
+    }
+
+    private void uploadFile(File f) {
+        SwingUtilities.invokeLater(() -> addMessageBubble("Bạn", "Đang upload " + f.getName() + "...", true));
+        try (Socket socket = new Socket(SERVER_IP, TCP_FILE_PORT);
+             OutputStream out = socket.getOutputStream();
+             BufferedWriter bw = new BufferedWriter(new OutputStreamWriter(out, StandardCharsets.UTF_8));
+             FileInputStream fis = new FileInputStream(f)) {
+
+            bw.write("UPLOAD:" + f.getName() + ":" + f.length() + "\n");
+            bw.flush();
+
+            byte[] buffer = new byte[8192];
+            int read;
+            while ((read = fis.read(buffer)) != -1) {
+                out.write(buffer, 0, read);
+            }
+            out.flush();
+
+            BufferedReader br = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+            String resp = br.readLine();
+            if (resp != null && resp.startsWith("OK:")) {
+                addMessageBubble("System", "Upload thành công: " + resp.substring(3), false);
+            }
+        } catch (Exception e) {
+            addMessageBubble("System", "Upload thất bại: " + e.getMessage(), false);
+        }
+    }
+
+    class RoundedPanel extends JPanel {
+        private final Color color;
+        private final int radius;
+
+        RoundedPanel(Color color, int radius) {
+            this.color = color;
+            this.radius = radius;
+            setOpaque(false);
+        }
+
+        @Override
+        protected void paintComponent(Graphics g) {
+            Graphics2D g2 = (Graphics2D) g.create();
+            g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+            g2.setColor(color);
+            g2.fillRoundRect(0, 0, getWidth(), getHeight(), radius, radius);
+            super.paintComponent(g);
+        }
+    }
+
+    public static void main(String[] args) {
+        SwingUtilities.invokeLater(Client::new);
+    }
+}

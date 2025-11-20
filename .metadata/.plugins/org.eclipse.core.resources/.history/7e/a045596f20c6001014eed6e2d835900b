@@ -1,0 +1,151 @@
+package sam;
+
+import javax.swing.*;
+import java.awt.*;
+import java.awt.event.*;
+import java.io.*;
+import java.net.*;
+
+public class Server extends JFrame {
+
+    private JTextArea logArea;
+    private JButton startBtn, stopBtn;
+    private ServerSocket serverSocket;
+    private boolean running = false;
+
+    public Server() {
+        setTitle("🌈 Rainbow Server");
+        setSize(600, 450);
+        setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+        setLocationRelativeTo(null);
+
+        JPanel gradientPanel = new JPanel() {
+            @Override
+            protected void paintComponent(Graphics g) {
+                super.paintComponent(g);
+                Graphics2D g2 = (Graphics2D) g;
+                GradientPaint gp = new GradientPaint(
+                        0, 0, Color.RED,
+                        getWidth(), getHeight(),
+                        Color.CYAN
+                );
+                g2.setPaint(gp);
+                g2.fillRect(0, 0, getWidth(), getHeight());
+            }
+        };
+        gradientPanel.setLayout(new BorderLayout());
+        setContentPane(gradientPanel);
+
+        logArea = new JTextArea();
+        logArea.setEditable(false);
+        logArea.setBackground(new Color(0, 0, 0, 150));
+        logArea.setForeground(Color.WHITE);
+        logArea.setFont(new Font("Consolas", Font.BOLD, 14));
+
+        JScrollPane scroll = new JScrollPane(logArea);
+        scroll.setBorder(BorderFactory.createLineBorder(Color.WHITE, 2));
+
+        startBtn = createNeonButton("START SERVER", new Color(0, 255, 0));
+        stopBtn = createNeonButton("STOP SERVER", Color.RED);
+        stopBtn.setEnabled(false);
+
+        JPanel btnPanel = new JPanel();
+        btnPanel.setOpaque(false);
+        btnPanel.add(startBtn);
+        btnPanel.add(stopBtn);
+
+        gradientPanel.add(scroll, BorderLayout.CENTER);
+        gradientPanel.add(btnPanel, BorderLayout.SOUTH);
+
+        startBtn.addActionListener(e -> startServer());
+        stopBtn.addActionListener(e -> stopServer());
+    }
+
+    private JButton createNeonButton(String text, Color glow) {
+        JButton btn = new JButton(text);
+        btn.setForeground(Color.WHITE);
+        btn.setBackground(new Color(0, 0, 0, 120));
+        btn.setFont(new Font("Arial", Font.BOLD, 14));
+        btn.setBorder(BorderFactory.createLineBorder(glow, 2));
+        btn.setFocusPainted(false);
+
+        btn.addMouseListener(new MouseAdapter() {
+            public void mouseEntered(MouseEvent e) {
+                btn.setBorder(BorderFactory.createLineBorder(glow.brighter(), 4));
+            }
+            public void mouseExited(MouseEvent e) {
+                btn.setBorder(BorderFactory.createLineBorder(glow, 2));
+            }
+        });
+
+        return btn;
+    }
+
+    private void startServer() {
+        try {
+            serverSocket = new ServerSocket(5000);
+            log("Server started on port 5000...");
+            running = true;
+            startBtn.setEnabled(false);
+            stopBtn.setEnabled(true);
+
+            new Thread(() -> {
+                while (running) {
+                    try {
+                        Socket socket = serverSocket.accept();
+                        log("Client connected: " + socket.getInetAddress());
+                        new ClientHandler(socket).start();
+                    } catch (IOException ignored) {}
+                }
+            }).start();
+        } catch (Exception ex) {
+            log("Error: " + ex.getMessage());
+        }
+    }
+
+    private void stopServer() {
+        try {
+            running = false;
+            if (serverSocket != null) serverSocket.close();
+            log("Server stopped.");
+            startBtn.setEnabled(true);
+            stopBtn.setEnabled(false);
+        } catch (Exception ex) {
+            log("Error stopping server.");
+        }
+    }
+
+    private void log(String msg) {
+        logArea.append(msg + "\n");
+    }
+
+    class ClientHandler extends Thread {
+        private Socket socket;
+
+        public ClientHandler(Socket s) {
+            socket = s;
+        }
+
+        public void run() {
+            try {
+                BufferedReader in = new BufferedReader(
+                        new InputStreamReader(socket.getInputStream())
+                );
+                PrintWriter out = new PrintWriter(socket.getOutputStream(), true);
+
+                String msg;
+                while ((msg = in.readLine()) != null) {
+                    log("Client: " + msg);
+                    out.println("Server received: " + msg);
+                }
+
+            } catch (IOException e) {
+                log("Client disconnected.");
+            }
+        }
+    }
+
+    public static void main(String[] args) {
+        SwingUtilities.invokeLater(() -> new Server().setVisible(true));
+    }
+}

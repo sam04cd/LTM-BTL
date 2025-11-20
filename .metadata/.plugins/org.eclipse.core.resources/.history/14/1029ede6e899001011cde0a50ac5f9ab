@@ -1,0 +1,115 @@
+package sam;
+
+import javax.swing.*;
+import java.awt.*;
+import java.awt.event.*;
+import java.net.*;
+import java.util.*;
+
+public class Server extends JFrame {
+    private JTextArea chatArea;
+    private JTextField inputField;
+    private JButton sendButton, clearButton;
+    private DatagramSocket socket;
+    private Set<InetSocketAddress> clientAddresses = new HashSet<>();
+
+    private static final int SERVER_PORT = 2004;
+
+    public Server() {
+        setTitle("🌐 UDP Server (Multi Client)");
+        setSize(600, 400);
+        setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+
+        chatArea = new JTextArea();
+        chatArea.setEditable(false);
+        chatArea.setBackground(new Color(30, 30, 30));
+        chatArea.setForeground(Color.WHITE);
+        chatArea.setFont(new Font("Consolas", Font.PLAIN, 14));
+
+        JScrollPane scrollPane = new JScrollPane(chatArea);
+
+        inputField = new JTextField();
+        inputField.setFont(new Font("Consolas", Font.PLAIN, 14));
+        inputField.setBackground(new Color(50, 50, 50));
+        inputField.setForeground(Color.CYAN);
+
+        sendButton = new JButton("Gửi");
+        sendButton.setBackground(Color.GREEN);
+        sendButton.setForeground(Color.BLACK);
+
+        clearButton = new JButton("🧹 Xóa lịch sử");
+        clearButton.setBackground(Color.RED);
+        clearButton.setForeground(Color.WHITE);
+
+        JPanel bottomPanel = new JPanel(new BorderLayout());
+        bottomPanel.add(inputField, BorderLayout.CENTER);
+
+        JPanel buttonPanel = new JPanel(new GridLayout(1, 2));
+        buttonPanel.add(sendButton);
+        buttonPanel.add(clearButton);
+
+        bottomPanel.add(buttonPanel, BorderLayout.EAST);
+
+        add(scrollPane, BorderLayout.CENTER);
+        add(bottomPanel, BorderLayout.SOUTH);
+
+        // Sự kiện gửi tin nhắn
+        sendButton.addActionListener(e -> sendMessage());
+        inputField.addActionListener(e -> sendMessage());
+
+        // Sự kiện xóa lịch sử
+        clearButton.addActionListener(e -> chatArea.setText(""));
+
+        try {
+            socket = new DatagramSocket(SERVER_PORT);
+            chatArea.append("🚀 Server đã khởi động tại cổng " + SERVER_PORT + "\n");
+
+            Thread receiveThread = new Thread(this::receiveMessages);
+            receiveThread.start();
+
+        } catch (Exception ex) {
+            ex.printStackTrace();
+        }
+
+        setVisible(true);
+    }
+
+    private void sendMessage() {
+        try {
+            String message = inputField.getText().trim();
+            if (!message.isEmpty()) {
+                chatArea.append("🟢 Server: " + message + "\n");
+                byte[] buffer = message.getBytes();
+                for (InetSocketAddress client : clientAddresses) {
+                    DatagramPacket packet = new DatagramPacket(buffer, buffer.length, client.getAddress(), client.getPort());
+                    socket.send(packet);
+                }
+                inputField.setText("");
+            }
+        } catch (Exception ex) {
+            ex.printStackTrace();
+        }
+    }
+
+    private void receiveMessages() {
+        try {
+            byte[] buffer = new byte[1024];
+            while (true) {
+                DatagramPacket packet = new DatagramPacket(buffer, buffer.length);
+                socket.receive(packet);
+
+                InetSocketAddress clientAddress = new InetSocketAddress(packet.getAddress(), packet.getPort());
+                clientAddresses.add(clientAddress);
+
+                String message = new String(packet.getData(), 0, packet.getLength());
+                chatArea.append("🔵 Client (" + clientAddress + "): " + message + "\n");
+            }
+        } catch (Exception ex) {
+            ex.printStackTrace();
+        }
+    }
+
+    public static void main(String[] args) {
+        SwingUtilities.invokeLater(Server::new);
+    }
+}

@@ -1,0 +1,122 @@
+package sam;
+
+import javax.swing.*;
+import javax.swing.border.EmptyBorder;
+import java.awt.*;
+import java.awt.event.*;
+import java.net.*;
+import java.nio.charset.StandardCharsets;
+
+public class Server {
+
+    private JFrame frame;
+    private JPanel panelMessages;
+    private JTextField input;
+    private DatagramSocket socket;
+
+    private final static int PORT = 2004;
+
+    public Server() {
+        createUI();
+
+        try {
+            socket = new DatagramSocket(PORT);
+            new Thread(this::receiveMessages).start();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    private void createUI() {
+        frame = new JFrame("SERVER CHAT – UDP Broadcast");
+        frame.setSize(400, 600);
+        frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+        frame.setLayout(new BorderLayout());
+
+        panelMessages = new JPanel();
+        panelMessages.setLayout(new BoxLayout(panelMessages, BoxLayout.Y_AXIS));
+
+        JScrollPane scroll = new JScrollPane(panelMessages);
+        frame.add(scroll, BorderLayout.CENTER);
+
+        JPanel bottom = new JPanel(new BorderLayout());
+        input = new JTextField();
+        JButton btnSend = new JButton(new ImageIcon("send.png"));
+
+        btnSend.addActionListener(e -> sendMessage());
+
+        bottom.add(input, BorderLayout.CENTER);
+        bottom.add(btnSend, BorderLayout.EAST);
+
+        frame.add(bottom, BorderLayout.SOUTH);
+        frame.setVisible(true);
+    }
+
+    private void addMessage(String text, boolean mine) {
+        JPanel bubble = new JPanel();
+        bubble.setLayout(new BoxLayout(bubble, BoxLayout.Y_AXIS));
+        bubble.setBorder(new EmptyBorder(10, 10, 10, 10));
+        bubble.setMaximumSize(new Dimension(300, Integer.MAX_VALUE));
+
+        if (mine) {
+            bubble.setBackground(new Color(0, 132, 255));
+            bubble.setAlignmentX(Component.RIGHT_ALIGNMENT);
+        } else {
+            bubble.setBackground(new Color(230, 230, 230));
+            bubble.setAlignmentX(Component.LEFT_ALIGNMENT);
+        }
+
+        JLabel lbl = new JLabel("<html>" + text + "</html>");
+        lbl.setForeground(mine ? Color.white : Color.black);
+
+        bubble.add(lbl);
+        panelMessages.add(bubble);
+        frame.revalidate();
+    }
+
+    private void sendMessage() {
+        try {
+            String msg = "Server: " + input.getText();
+            addMessage(input.getText(), true);
+
+            byte[] data = msg.getBytes(StandardCharsets.UTF_8);
+
+            DatagramPacket packet = new DatagramPacket(
+                    data,
+                    data.length,
+                    InetAddress.getByName("255.255.255.255"),
+                    PORT
+            );
+
+            socket.setBroadcast(true);
+            socket.send(packet);
+
+            input.setText("");
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    private void receiveMessages() {
+        try {
+            byte[] buffer = new byte[4096];
+
+            while (true) {
+                DatagramPacket packet = new DatagramPacket(buffer, buffer.length);
+                socket.receive(packet);
+
+                String msg = new String(packet.getData(), 0, packet.getLength(), StandardCharsets.UTF_8);
+
+                if (!msg.startsWith("Server"))
+                    addMessage(msg, false);
+            }
+
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    public static void main(String[] args) {
+        new Server();
+    }
+}

@@ -1,0 +1,143 @@
+package sam;
+
+import javax.swing.*;
+import java.awt.*;
+import java.awt.event.*;
+import java.io.*;
+import java.net.*;
+
+public class Client extends JFrame {
+    private JTextArea chatArea;
+    private JTextField inputField;
+    private JButton sendButton, deleteButton, sendFileButton;
+    private DatagramSocket socket;
+    private InetAddress serverAddress;
+    private static final int SERVER_PORT = 2004;
+
+    public Client() {
+        setTitle("UDP Client");
+        setSize(400, 400);
+        setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+        setLayout(new BorderLayout());
+
+        chatArea = new JTextArea();
+        chatArea.setEditable(false);
+        add(new JScrollPane(chatArea), BorderLayout.CENTER);
+
+        JPanel bottomPanel = new JPanel(new BorderLayout());
+        inputField = new JTextField();
+        sendButton = new JButton("Gửi");
+        deleteButton = new JButton("Xóa");
+        sendFileButton = new JButton("Gửi File");
+
+        bottomPanel.add(inputField, BorderLayout.CENTER);
+
+        JPanel buttonPanel = new JPanel();
+        buttonPanel.add(sendButton);
+        buttonPanel.add(deleteButton);
+        buttonPanel.add(sendFileButton);
+        bottomPanel.add(buttonPanel, BorderLayout.EAST);
+
+        add(bottomPanel, BorderLayout.SOUTH);
+
+        try {
+            socket = new DatagramSocket();
+            serverAddress = InetAddress.getByName("255.255.255.255");
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+
+        // Gửi tin nhắn
+        sendButton.addActionListener(e -> sendMessage());
+
+        // Xóa tin nhắn cuối
+        deleteButton.addActionListener(e -> deleteLastMessage());
+
+        // Gửi file
+        sendFileButton.addActionListener(e -> chooseAndSendFile());
+
+        // Thread nhận dữ liệu
+        new Thread(this::receiveMessages).start();
+
+        setVisible(true);
+    }
+
+    private void sendMessage() {
+        try {
+            String msg = inputField.getText().trim();
+            if (!msg.isEmpty()) {
+                byte[] buffer = msg.getBytes();
+                DatagramPacket packet = new DatagramPacket(buffer, buffer.length, serverAddress, SERVER_PORT);
+                socket.send(packet);
+                chatArea.append("Me: " + msg + "\n");
+                inputField.setText("");
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    private void deleteLastMessage() {
+        String text = chatArea.getText();
+        int lastLine = text.lastIndexOf("\n");
+        if (lastLine != -1) {
+            chatArea.setText(text.substring(0, lastLine));
+        } else {
+            chatArea.setText("");
+        }
+    }
+
+    private void chooseAndSendFile() {
+        JFileChooser fileChooser = new JFileChooser();
+        int result = fileChooser.showOpenDialog(this);
+        if (result == JFileChooser.APPROVE_OPTION) {
+            File file = fileChooser.getSelectedFile();
+            sendFile(file);
+        }
+    }
+
+    private void sendFile(File file) {
+        try (FileInputStream fis = new FileInputStream(file)) {
+            byte[] buffer = new byte[1024];
+            int bytesRead;
+
+            // Gửi tên file trước
+            byte[] nameBytes = ("FILENAME:" + file.getName()).getBytes();
+            DatagramPacket namePacket = new DatagramPacket(nameBytes, nameBytes.length, serverAddress, SERVER_PORT);
+            socket.send(namePacket);
+
+            // Gửi dữ liệu file
+            while ((bytesRead = fis.read(buffer)) != -1) {
+                DatagramPacket packet = new DatagramPacket(buffer, bytesRead, serverAddress, SERVER_PORT);
+                socket.send(packet);
+            }
+
+            // Gửi gói kết thúc
+            byte[] endMsg = "EOF".getBytes();
+            DatagramPacket endPacket = new DatagramPacket(endMsg, endMsg.length, serverAddress, SERVER_PORT);
+            socket.send(endPacket);
+
+            chatArea.append("Đã gửi file: " + file.getName() + "\n");
+        } catch (Exception ex) {
+            ex.printStackTrace();
+        }
+    }
+
+    private void receiveMessages() {
+        try {
+            byte[] buffer = new byte[1024];
+            while (true) {
+                DatagramPacket packet = new DatagramPacket(buffer, buffer.length);
+                socket.receive(packet);
+                String msg = new String(packet.getData(), 0, packet.getLength());
+                chatArea.append("Server: " + msg + "\n");
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    public static void main(String[] args) {
+        new Client();
+    }
+}

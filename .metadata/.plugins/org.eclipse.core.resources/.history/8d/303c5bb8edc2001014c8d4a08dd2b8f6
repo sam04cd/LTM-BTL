@@ -1,0 +1,199 @@
+package sam;
+
+import javax.swing.*;
+import java.awt.*;
+import java.awt.event.*;
+import java.io.*;
+import java.net.*;
+import java.nio.charset.StandardCharsets;
+import java.util.*;
+import java.util.List;
+
+public class Server {
+    private JFrame frame;
+    private JPanel messagePanel;
+    private JScrollPane scrollPane;
+    private JTextField inputField;
+    private DatagramSocket socket;
+    private static final int SERVER_PORT = 2004;
+
+    // Danh sách Client + đánh số
+    private Map<String, Integer> clientIds = new HashMap<>();
+    private int clientCounter = 1;
+
+    public Server() {
+        createUI();
+        try {
+            socket = new DatagramSocket(SERVER_PORT);
+            new Thread(this::receiveMessages).start();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    private void createUI() {
+        frame = new JFrame("Messenger UDP Server");
+        frame.setSize(500, 650);
+        frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+
+        messagePanel = new JPanel();
+        messagePanel.setLayout(new BoxLayout(messagePanel, BoxLayout.Y_AXIS));
+        messagePanel.setBackground(new Color(240, 242, 245));
+
+        scrollPane = new JScrollPane(messagePanel);
+        scrollPane.setVerticalScrollBarPolicy(JScrollPane.VERTICAL_SCROLLBAR_ALWAYS);
+
+        inputField = new JTextField();
+        inputField.setFont(new Font("Arial", Font.PLAIN, 14));
+        inputField.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
+
+        JButton sendButton = new JButton("➤");
+        JButton clearButton = new JButton("🗑️");
+        JButton emojiButton = new JButton("😊");
+
+        JPanel inputPanel = new JPanel(new BorderLayout(5, 5));
+        JPanel leftPanel = new JPanel(new FlowLayout(FlowLayout.LEFT));
+        leftPanel.add(emojiButton);
+        leftPanel.add(clearButton);
+
+        inputPanel.add(leftPanel, BorderLayout.WEST);
+        inputPanel.add(inputField, BorderLayout.CENTER);
+        inputPanel.add(sendButton, BorderLayout.EAST);
+
+        frame.add(scrollPane, BorderLayout.CENTER);
+        frame.add(inputPanel, BorderLayout.SOUTH);
+
+        sendButton.addActionListener(e -> sendMessage());
+        inputField.addActionListener(e -> sendMessage());
+
+        clearButton.addActionListener(e -> clearMessages());
+
+        emojiButton.addActionListener(e -> {
+            JPopupMenu emojiMenu = new JPopupMenu();
+            String[] emojis = {"😀", "😂", "😍", "😢", "👍", "❤️", "🔥"};
+            for (String emo : emojis) {
+                JMenuItem item = new JMenuItem(emo);
+                item.addActionListener(ev -> inputField.setText(inputField.getText() + emo));
+                emojiMenu.add(item);
+            }
+            emojiMenu.show(emojiButton, 0, emojiButton.getHeight());
+        });
+
+        frame.setVisible(true);
+    }
+
+    /** Hiển thị bong bóng chat */
+    private void addMessage(String msg, boolean isMe) {
+        JLabel label = new JLabel("<html>" + msg + "</html>");
+        label.setFont(new Font("Arial", Font.PLAIN, 14));
+        label.setForeground(isMe ? Color.WHITE : Color.BLACK);
+        label.setBorder(BorderFactory.createEmptyBorder(8, 12, 8, 12));
+
+        JPanel bubble = new JPanel() {
+            @Override
+            protected void paintComponent(Graphics g) {
+                super.paintComponent(g);
+                Graphics2D g2 = (Graphics2D) g;
+                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+                g2.setColor(isMe ? new Color(0, 132, 255) : Color.WHITE);
+                g2.fillRoundRect(0, 0, getWidth(), getHeight(), 20, 20);
+            }
+        };
+
+        bubble.setLayout(new BorderLayout());
+        bubble.setOpaque(false);
+        bubble.add(label, BorderLayout.CENTER);
+
+        Dimension prefSize = label.getPreferredSize();
+        bubble.setMaximumSize(new Dimension(prefSize.width + 25, prefSize.height + 20));
+
+        JPanel wrapper = new JPanel();
+        wrapper.setLayout(new BoxLayout(wrapper, BoxLayout.X_AXIS));
+        wrapper.setOpaque(false);
+
+        if (isMe) {
+            wrapper.add(Box.createHorizontalGlue());
+            wrapper.add(bubble);
+        } else {
+            wrapper.add(bubble);
+            wrapper.add(Box.createHorizontalGlue());
+        }
+
+        messagePanel.add(wrapper);
+        messagePanel.add(Box.createVerticalStrut(5));
+        messagePanel.revalidate();
+
+        SwingUtilities.invokeLater(() -> {
+            JScrollBar vertical = scrollPane.getVerticalScrollBar();
+            vertical.setValue(vertical.getMaximum());
+        });
+    }
+
+    /** Gửi tin nhắn từ server đến tất cả client */
+    private void sendMessage() {
+        try {
+            String msg = inputField.getText().trim();
+            if (msg.isEmpty()) return;
+
+            String fullMsg = "Server: " + msg;
+            byte[] data = fullMsg.getBytes(StandardCharsets.UTF_8);
+
+            // Gửi tới tất cả client đã kết nối
+            for (String key : clientIds.keySet()) {
+                String[] parts = key.split(":");
+                InetAddress addr = InetAddress.getByName(parts[0]);
+                int port = Integer.parseInt(parts[1]);
+
+                DatagramPacket packet = new DatagramPacket(data, data.length, addr, port);
+                socket.send(packet);
+            }
+
+            addMessage(fullMsg, true);
+            inputField.setText("");
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    /** Nhận tin nhắn từ Client */
+    private void receiveMessages() {
+        byte[] buffer = new byte[65535];
+        while (true) {
+            try {
+                DatagramPacket packet = new DatagramPacket(buffer, buffer.length);
+                socket.receive(packet);
+
+                String clientKey = packet.getAddress().getHostAddress() + ":" + packet.getPort();
+                clientIds.putIfAbsent(clientKey, clientCounter++);
+
+                int clientId = clientIds.get(clientKey);
+
+                String msg = new String(packet.getData(), 0, packet.getLength(), StandardCharsets.UTF_8);
+                String display = "Client " + clientId + ": " + msg;
+
+                // Chỉ hiển thị trên Server, không gửi lại cho Client khác
+                addMessage(display, false);
+
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        }
+    }
+
+    /** Xóa toàn bộ tin nhắn trên màn hình */
+    private void clearMessages() {
+        int confirm = JOptionPane.showConfirmDialog(frame,
+                "Bạn có chắc chắn muốn xóa toàn bộ tin nhắn?",
+                "Xác nhận", JOptionPane.YES_NO_OPTION);
+
+        if (confirm == JOptionPane.YES_OPTION) {
+            messagePanel.removeAll();
+            messagePanel.revalidate();
+            messagePanel.repaint();
+        }
+    }
+
+    public static void main(String[] args) {
+        SwingUtilities.invokeLater(Server::new);
+    }
+}

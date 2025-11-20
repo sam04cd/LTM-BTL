@@ -1,0 +1,106 @@
+package sam;
+
+import javax.swing.*;
+import java.awt.*;
+import java.awt.event.*;
+import java.net.*;
+
+public class Client extends JFrame {
+    private JTextArea chatArea;
+    private JTextField inputField;
+    private JButton sendButton, clearButton;
+    private DatagramSocket socket;
+    private InetAddress serverAddress;
+    private static final int SERVER_PORT = 2004;
+
+    public Client() {
+        setTitle("UDP Client");
+        setSize(500, 350);
+        setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+
+        chatArea = new JTextArea();
+        chatArea.setEditable(false);
+        chatArea.setBackground(new Color(10, 10, 30));
+        chatArea.setForeground(Color.WHITE);
+        chatArea.setFont(new Font("Consolas", Font.PLAIN, 14));
+        JScrollPane scrollPane = new JScrollPane(chatArea);
+
+        inputField = new JTextField();
+        inputField.setFont(new Font("Consolas", Font.PLAIN, 14));
+        inputField.setBackground(new Color(40, 40, 60));
+        inputField.setForeground(Color.WHITE);
+
+        sendButton = new JButton("Gửi");
+        sendButton.setBackground(Color.CYAN);
+        sendButton.setForeground(Color.BLACK);
+
+        clearButton = new JButton("❌ Xóa lịch sử");
+        clearButton.setBackground(Color.RED);
+        clearButton.setForeground(Color.WHITE);
+
+        JPanel panel = new JPanel(new BorderLayout());
+        panel.add(inputField, BorderLayout.CENTER);
+
+        JPanel buttonPanel = new JPanel(new GridLayout(1, 2));
+        buttonPanel.add(sendButton);
+        buttonPanel.add(clearButton);
+        panel.add(buttonPanel, BorderLayout.EAST);
+
+        add(scrollPane, BorderLayout.CENTER);
+        add(panel, BorderLayout.SOUTH);
+
+        try {
+            socket = new DatagramSocket();
+            serverAddress = InetAddress.getByName("");
+
+            chatArea.append(" Client đã kết nối đến server\n");
+
+            Thread receiveThread = new Thread(() -> receiveMessages());
+            receiveThread.start();
+
+            sendButton.addActionListener(e -> sendMessage());
+            inputField.addActionListener(e -> sendMessage());
+
+            clearButton.addActionListener(e -> chatArea.setText(""));
+
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    private void receiveMessages() {
+        try {
+            byte[] buffer = new byte[1024];
+            while (true) {
+                DatagramPacket packet = new DatagramPacket(buffer, buffer.length);
+                socket.receive(packet);
+
+                String message = new String(packet.getData(), 0, packet.getLength());
+                chatArea.append(message + "\n");
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    private void sendMessage() {
+        try {
+            String message = inputField.getText().trim();
+            if (!message.isEmpty()) {
+                chatArea.append("" + message + "\n");
+
+                byte[] buffer = message.getBytes();
+                DatagramPacket packet = new DatagramPacket(buffer, buffer.length, serverAddress, SERVER_PORT);
+                socket.send(packet);
+
+                inputField.setText("");
+            }
+        } catch (Exception ex) {
+            ex.printStackTrace();
+        }
+    }
+
+    public static void main(String[] args) {
+        SwingUtilities.invokeLater(() -> new Client().setVisible(true));
+    }
+}

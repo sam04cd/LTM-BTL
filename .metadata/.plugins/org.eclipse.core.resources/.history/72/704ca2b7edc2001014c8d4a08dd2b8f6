@@ -1,0 +1,180 @@
+package sam;
+
+import javax.swing.*;
+import java.awt.*;
+import java.net.*;
+import java.io.*;
+import java.nio.charset.StandardCharsets;
+
+public class Client {
+    private JFrame frame;
+    private JPanel messagePanel;
+    private JScrollPane scrollPane;
+    private JTextField inputField;
+    private DatagramSocket socket;
+    private InetAddress serverAddress;
+    private static final int SERVER_PORT = 2004;
+
+    public Client() {
+        createUI();
+        try {
+            socket = new DatagramSocket();
+            serverAddress = InetAddress.getByName("localhost");
+            new Thread(this::receiveMessages).start();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    private void createUI() {
+        frame = new JFrame("Messenger UDP Client");
+        frame.setSize(450, 600);
+        frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+
+        messagePanel = new JPanel();
+        messagePanel.setLayout(new BoxLayout(messagePanel, BoxLayout.Y_AXIS));
+        messagePanel.setBackground(new Color(240, 242, 245));
+
+        scrollPane = new JScrollPane(messagePanel);
+        scrollPane.setVerticalScrollBarPolicy(JScrollPane.VERTICAL_SCROLLBAR_ALWAYS);
+
+        inputField = new JTextField();
+        inputField.setFont(new Font("Arial", Font.PLAIN, 14));
+        inputField.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
+
+        JButton sendButton = new JButton("➤");
+        JButton emojiButton = new JButton("😊");
+        JButton fileButton = new JButton("📎");
+
+        JPanel inputPanel = new JPanel(new BorderLayout(5, 5));
+        JPanel leftPanel = new JPanel(new FlowLayout(FlowLayout.LEFT));
+        leftPanel.add(emojiButton);
+        leftPanel.add(fileButton);
+
+        inputPanel.add(leftPanel, BorderLayout.WEST);
+        inputPanel.add(inputField, BorderLayout.CENTER);
+        inputPanel.add(sendButton, BorderLayout.EAST);
+
+        frame.add(scrollPane, BorderLayout.CENTER);
+        frame.add(inputPanel, BorderLayout.SOUTH);
+
+        sendButton.addActionListener(e -> sendMessage());
+        inputField.addActionListener(e -> sendMessage());
+        fileButton.addActionListener(e -> sendFile());
+
+        emojiButton.addActionListener(e -> {
+            JPopupMenu emojiMenu = new JPopupMenu();
+            String[] emojis = {"😀", "😂", "😍", "😢", "👍", "❤️", "🔥"};
+            for (String emo : emojis) {
+                JMenuItem item = new JMenuItem(emo);
+                item.addActionListener(ev -> inputField.setText(inputField.getText() + emo));
+                emojiMenu.add(item);
+            }
+            emojiMenu.show(emojiButton, 0, emojiButton.getHeight());
+        });
+
+        frame.setVisible(true);
+    }
+
+    /** Bong bóng chat tự co theo text */
+    private void addMessage(String msg, boolean isMe) {
+        JLabel label = new JLabel("<html>" + msg + "</html>");
+        label.setFont(new Font("Arial", Font.PLAIN, 14));
+        label.setForeground(isMe ? Color.WHITE : Color.BLACK);
+        label.setBorder(BorderFactory.createEmptyBorder(8, 12, 8, 12));
+
+        JPanel bubble = new JPanel() {
+            @Override
+            protected void paintComponent(Graphics g) {
+                super.paintComponent(g);
+                Graphics2D g2 = (Graphics2D) g;
+                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+                g2.setColor(isMe ? new Color(0, 132, 255) : Color.WHITE);
+                g2.fillRoundRect(0, 0, getWidth(), getHeight(), 20, 20);
+            }
+        };
+
+        bubble.setLayout(new BorderLayout());
+        bubble.setOpaque(false);
+        bubble.add(label, BorderLayout.CENTER);
+
+        // Tính size vừa với text
+        Dimension prefSize = label.getPreferredSize();
+        bubble.setMaximumSize(new Dimension(prefSize.width + 25, prefSize.height + 20));
+
+        // wrapper để căn trái/phải
+        JPanel wrapper = new JPanel();
+        wrapper.setLayout(new BoxLayout(wrapper, BoxLayout.X_AXIS));
+        wrapper.setOpaque(false);
+
+        if (isMe) {
+            wrapper.add(Box.createHorizontalGlue());
+            wrapper.add(bubble);
+        } else {
+            wrapper.add(bubble);
+            wrapper.add(Box.createHorizontalGlue());
+        }
+
+        messagePanel.add(wrapper);
+        messagePanel.add(Box.createVerticalStrut(5)); // khoảng cách giữa tin nhắn
+        messagePanel.revalidate();
+
+        // auto scroll xuống cuối
+        SwingUtilities.invokeLater(() -> {
+            JScrollBar vertical = scrollPane.getVerticalScrollBar();
+            vertical.setValue(vertical.getMaximum());
+        });
+    }
+
+    /** Gửi tin nhắn */
+    private void sendMessage() {
+        try {
+            String msg = inputField.getText().trim();
+            if (msg.isEmpty()) return;
+            byte[] data = msg.getBytes(StandardCharsets.UTF_8);
+            DatagramPacket packet = new DatagramPacket(data, data.length, serverAddress, SERVER_PORT);
+            socket.send(packet);
+            addMessage("Me: " + msg, true);
+            inputField.setText("");
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    /** Gửi file */
+    private void sendFile() {
+        JFileChooser chooser = new JFileChooser();
+        if (chooser.showOpenDialog(frame) == JFileChooser.APPROVE_OPTION) {
+            File file = chooser.getSelectedFile();
+            try {
+                byte[] data = java.nio.file.Files.readAllBytes(file.toPath());
+                String header = "[FILE]:" + file.getName() + ":" + new String(data, StandardCharsets.UTF_8);
+                byte[] buffer = header.getBytes(StandardCharsets.UTF_8);
+                DatagramPacket packet = new DatagramPacket(buffer, buffer.length, serverAddress, SERVER_PORT);
+                socket.send(packet);
+                addMessage("📤 Đã gửi file: " + file.getName(), true);
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        }
+    }
+
+    /** Nhận tin nhắn */
+    private void receiveMessages() {
+        byte[] buffer = new byte[65535];
+        while (true) {
+            try {
+                DatagramPacket packet = new DatagramPacket(buffer, buffer.length);
+                socket.receive(packet);
+                String msg = new String(packet.getData(), 0, packet.getLength(), StandardCharsets.UTF_8);
+                addMessage(msg, false);
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        }
+    }
+
+    public static void main(String[] args) {
+        SwingUtilities.invokeLater(Client::new);
+    }
+}

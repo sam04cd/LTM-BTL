@@ -1,0 +1,118 @@
+package sam;
+
+import javax.swing.*;
+import java.awt.*;
+import java.awt.event.*;
+import java.io.*;
+import java.net.*;
+
+public class Client extends JFrame {
+
+    private JTextField ipField, messageField;
+    private JTextArea chatArea;
+    private JButton sendBtn;
+
+    public Client() {
+        setTitle("🌈 Rainbow Client");
+        setSize(600, 450);
+        setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+        setLocationRelativeTo(null);
+
+        JPanel gradientPanel = new JPanel() {
+            @Override
+            protected void paintComponent(Graphics g) {
+                super.paintComponent(g);
+                Graphics2D g2 = (Graphics2D) g;
+                GradientPaint gp = new GradientPaint(
+                        0, 0, Color.MAGENTA,
+                        getWidth(), getHeight(),
+                        Color.ORANGE
+                );
+                g2.setPaint(gp);
+                g2.fillRect(0, 0, getWidth(), getHeight());
+            }
+        };
+        gradientPanel.setLayout(new BorderLayout());
+        setContentPane(gradientPanel);
+
+        chatArea = new JTextArea();
+        chatArea.setEditable(false);
+        chatArea.setBackground(new Color(0, 0, 0, 140));
+        chatArea.setForeground(Color.WHITE);
+        chatArea.setFont(new Font("Consolas", Font.BOLD, 14));
+
+        JScrollPane scroll = new JScrollPane(chatArea);
+        scroll.setBorder(BorderFactory.createLineBorder(Color.WHITE, 2));
+
+        JPanel topPanel = new JPanel();
+        topPanel.setOpaque(false);
+        topPanel.add(new JLabel("Server IP:"));
+        ipField = new JTextField("127.0.0.1", 12);
+        topPanel.add(ipField);
+
+        JPanel inputPanel = new JPanel();
+        inputPanel.setOpaque(false);
+
+        messageField = new JTextField(20);
+        sendBtn = createNeonButton("SEND", Color.GREEN);
+
+        inputPanel.add(new JLabel("Message:"));
+        inputPanel.add(messageField);
+        inputPanel.add(sendBtn);
+
+        gradientPanel.add(topPanel, BorderLayout.NORTH);
+        gradientPanel.add(scroll, BorderLayout.CENTER);
+        gradientPanel.add(inputPanel, BorderLayout.SOUTH);
+
+        sendBtn.addActionListener(e -> sendMessage());
+    }
+
+    private JButton createNeonButton(String text, Color glow) {
+        JButton btn = new JButton(text);
+        btn.setForeground(Color.WHITE);
+        btn.setBackground(new Color(0, 0, 0, 100));
+        btn.setFont(new Font("Arial", Font.BOLD, 14));
+        btn.setBorder(BorderFactory.createLineBorder(glow, 2));
+        btn.setFocusPainted(false);
+
+        btn.addMouseListener(new MouseAdapter() {
+            public void mouseEntered(MouseEvent e) {
+                btn.setBorder(BorderFactory.createLineBorder(glow.brighter(), 4));
+            }
+            public void mouseExited(MouseEvent e) {
+                btn.setBorder(BorderFactory.createLineBorder(glow, 2));
+            }
+        });
+
+        return btn;
+    }
+
+    private void sendMessage() {
+        try {
+            Socket socket = new Socket(ipField.getText(), 5000);
+
+            BufferedReader in = new BufferedReader(
+                    new InputStreamReader(socket.getInputStream())
+            );
+            PrintWriter out = new PrintWriter(socket.getOutputStream(), true);
+
+            String msg = messageField.getText();
+            chatArea.append("You: " + msg + "\n");
+
+            out.println(msg);
+
+            String response = in.readLine();
+            chatArea.append("Server: " + response + "\n");
+
+            socket.close();
+            messageField.setText("");
+
+        } catch (Exception ex) {
+            chatArea.append("❌ Error: " + ex.getMessage() + "\n");
+        }
+    }
+
+    public static void main(String[] args) {
+        SwingUtilities.invokeLater(() -> new Client().setVisible(true));
+    }
+}

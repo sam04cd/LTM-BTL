@@ -1,0 +1,125 @@
+package sam;
+
+import javax.swing.*;
+import java.awt.*;
+import java.net.*;
+import java.util.*;
+
+public class Server extends JFrame {
+    private JTextArea chatArea;
+    private JTextField inputField;
+    private JButton sendButton, clearButton;
+    private DatagramSocket socket;
+    private static final int SERVER_PORT = 2004;
+
+    // Danh sách lưu client và ID (Client 1, Client 2...)
+    private Map<InetSocketAddress, String> clientMap = new HashMap<>();
+    private int clientCounter = 1;
+
+    public Server() {
+        setTitle("UDP Server (Multi Client)");
+        setSize(600, 400);
+        setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+
+        chatArea = new JTextArea();
+        chatArea.setEditable(false);
+        chatArea.setBackground(new Color(20, 20, 20));
+        chatArea.setForeground(Color.WHITE);
+        chatArea.setFont(new Font("Consolas", Font.PLAIN, 14));
+        JScrollPane scrollPane = new JScrollPane(chatArea);
+
+        inputField = new JTextField();
+        inputField.setFont(new Font("Consolas", Font.PLAIN, 14));
+        inputField.setBackground(new Color(40, 40, 60));
+        inputField.setForeground(Color.WHITE);
+
+        sendButton = new JButton("Gửi");
+        sendButton.setBackground(Color.GREEN);
+        sendButton.setForeground(Color.BLACK);
+
+        clearButton = new JButton("❌ Xóa lịch sử");
+        clearButton.setBackground(Color.RED);
+        clearButton.setForeground(Color.WHITE);
+
+        JPanel panel = new JPanel(new BorderLayout());
+        panel.add(inputField, BorderLayout.CENTER);
+
+        JPanel buttonPanel = new JPanel(new GridLayout(1, 2));
+        buttonPanel.add(sendButton);
+        buttonPanel.add(clearButton);
+        panel.add(buttonPanel, BorderLayout.EAST);
+
+        add(scrollPane, BorderLayout.CENTER);
+        add(panel, BorderLayout.SOUTH);
+
+        try {
+            socket = new DatagramSocket(SERVER_PORT);
+            chatArea.append(" Server đã khởi động tại cổng " + SERVER_PORT + "\n");
+
+            Thread receiveThread = new Thread(this::receiveMessages);
+            receiveThread.start();
+
+            sendButton.addActionListener(e -> sendMessage());
+            inputField.addActionListener(e -> sendMessage());
+            clearButton.addActionListener(e -> chatArea.setText(""));
+
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    private void receiveMessages() {
+        try {
+            byte[] buffer = new byte[1024];
+            while (true) {
+                DatagramPacket packet = new DatagramPacket(buffer, buffer.length);
+                socket.receive(packet);
+
+                InetSocketAddress clientAddress = new InetSocketAddress(packet.getAddress(), packet.getPort());
+
+                // Nếu client mới thì gán tên
+                if (!clientMap.containsKey(clientAddress)) {
+                    clientMap.put(clientAddress, "Client " + clientCounter++);
+                }
+
+                String clientName = clientMap.get(clientAddress);
+                String message = new String(packet.getData(), 0, packet.getLength());
+
+                // Hiển thị trong server
+                chatArea.append(" " + clientName + ": " + message + "\n");
+
+                // Gửi lại cho tất cả client (không kèm IP, chỉ tên client)
+                String forwardMessage = clientName + ": " + message;
+                byte[] sendData = forwardMessage.getBytes();
+                for (InetSocketAddress client : clientMap.keySet()) {
+                    socket.send(new DatagramPacket(sendData, sendData.length, client.getAddress(), client.getPort()));
+                }
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    private void sendMessage() {
+        try {
+            String message = inputField.getText().trim();
+            if (!message.isEmpty()) {
+                chatArea.append(" Server: " + message + "\n");
+
+                byte[] buffer = ("Server: " + message).getBytes();
+                for (InetSocketAddress client : clientMap.keySet()) {
+                    DatagramPacket packet = new DatagramPacket(buffer, buffer.length, client.getAddress(), client.getPort());
+                    socket.send(packet);
+                }
+
+                inputField.setText("");
+            }
+        } catch (Exception ex) {
+            ex.printStackTrace();
+        }
+    }
+
+    public static void main(String[] args) {
+        SwingUtilities.invokeLater(() -> new Server().setVisible(true));
+    }
+}

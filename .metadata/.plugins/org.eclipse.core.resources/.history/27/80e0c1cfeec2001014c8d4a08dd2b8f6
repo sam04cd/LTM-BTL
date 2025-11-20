@@ -1,0 +1,158 @@
+package sam;
+
+import javax.swing.*;
+import javax.swing.border.EmptyBorder;
+import java.awt.*;
+import java.net.*;
+import java.nio.charset.StandardCharsets;
+
+public class Server {
+
+    private JFrame frame;
+    private JPanel panelMessages;
+    private JTextField input;
+    private DatagramSocket socket;
+
+    private final static int PORT = 2004;
+
+    // Broadcast LAN (thay đổi tùy mạng)
+    private final static String BROADCAST_IP = "192.168.1.255";
+
+    private String serverName = "Server";
+
+    public Server() {
+        createUI();
+
+        try {
+            socket = new DatagramSocket(PORT);
+            new Thread(this::receiveMessages).start();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    private void createUI() {
+        frame = new JFrame("SERVER CHAT – UDP Broadcast");
+        frame.setSize(420, 650);
+        frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+        frame.setLayout(new BorderLayout());
+
+        panelMessages = new JPanel();
+        panelMessages.setLayout(new BoxLayout(panelMessages, BoxLayout.Y_AXIS));
+        panelMessages.setBackground(Color.WHITE);
+
+        JScrollPane scroll = new JScrollPane(panelMessages);
+        scroll.setBorder(null);
+        frame.add(scroll, BorderLayout.CENTER);
+
+        JPanel bottom = new JPanel(new BorderLayout());
+        input = new JTextField();
+
+        JButton btnEmoji = new JButton("😊");
+        btnEmoji.setFocusable(false);
+
+        JButton btnSend = new JButton("Gửi");
+        btnSend.setFocusable(false);
+
+        btnSend.addActionListener(e -> sendMessage());
+
+        // Emoji picker
+        JPopupMenu emojiMenu = new JPopupMenu();
+        String[] emojis = {"😀","😁","😂","🤣","😊","😍","😎","😡","👍","👀","❤️"};
+        for (String e : emojis) {
+            JMenuItem item = new JMenuItem(e);
+            item.addActionListener(a -> input.setText(input.getText() + e));
+            emojiMenu.add(item);
+        }
+        btnEmoji.addActionListener(ev -> emojiMenu.show(btnEmoji, 0, btnEmoji.getHeight()));
+
+        bottom.add(btnEmoji, BorderLayout.WEST);
+        bottom.add(input, BorderLayout.CENTER);
+        bottom.add(btnSend, BorderLayout.EAST);
+
+        frame.add(bottom, BorderLayout.SOUTH);
+
+        frame.setVisible(true);
+    }
+
+    private void addMessage(String text, boolean mine) {
+        RoundedPanel bubble = new RoundedPanel(mine ? new Color(0,132,255) : new Color(230,230,230));
+        bubble.setLayout(new BoxLayout(bubble, BoxLayout.Y_AXIS));
+        bubble.setBorder(new EmptyBorder(10, 10, 10, 10));
+        bubble.setMaximumSize(new Dimension(320, Integer.MAX_VALUE));
+
+        bubble.setAlignmentX(mine ? Component.RIGHT_ALIGNMENT : Component.LEFT_ALIGNMENT);
+
+        JLabel lbl = new JLabel("<html>" + text + "</html>");
+        lbl.setForeground(mine ? Color.WHITE : Color.BLACK);
+        bubble.add(lbl);
+
+        panelMessages.add(bubble);
+        panelMessages.revalidate();
+    }
+
+    private void sendMessage() {
+        try {
+            String msg = serverName + ": " + input.getText();
+            addMessage(input.getText(), true);
+
+            byte[] data = msg.getBytes(StandardCharsets.UTF_8);
+
+            DatagramPacket packet = new DatagramPacket(
+                    data,
+                    data.length,
+                    InetAddress.getByName(BROADCAST_IP),
+                    PORT
+            );
+
+            socket.setBroadcast(true);
+            socket.send(packet);
+
+            input.setText("");
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    private void receiveMessages() {
+        try {
+            byte[] buffer = new byte[4096];
+
+            while (true) {
+                DatagramPacket packet = new DatagramPacket(buffer, buffer.length);
+                socket.receive(packet);
+
+                String msg = new String(packet.getData(), 0, packet.getLength(), StandardCharsets.UTF_8);
+
+                if (!msg.startsWith(serverName)) {
+                    addMessage(msg, false);
+                }
+            }
+
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    // Panel bo góc
+    class RoundedPanel extends JPanel {
+        private int radius = 15;
+
+        public RoundedPanel(Color bg) {
+            setBackground(bg);
+            setOpaque(false);
+        }
+
+        protected void paintComponent(Graphics g) {
+            Graphics2D g2 = (Graphics2D) g;
+            g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+            g2.setColor(getBackground());
+            g2.fillRoundRect(0, 0, getWidth(), getHeight(), radius, radius);
+            super.paintComponent(g);
+        }
+    }
+
+    public static void main(String[] args) {
+        new Server();
+    }
+}

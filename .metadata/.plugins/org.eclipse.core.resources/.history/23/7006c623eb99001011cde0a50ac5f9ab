@@ -1,0 +1,111 @@
+package sam;
+
+import javax.swing.*;
+import java.awt.*;
+import java.net.*;
+import java.util.*;
+
+public class Server extends JFrame {
+    private JTextArea textArea;
+    private JTextField inputField;
+    private JButton sendButton, clearButton;
+
+    private DatagramSocket socket;
+    private int serverPort = 2004;
+    private java.util.List<InetSocketAddress> clients = new ArrayList<>();
+
+    public Server() {
+        setTitle("UDP Server (Multi Client)");
+        setSize(500, 400);
+        setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+        setLayout(new BorderLayout());
+
+        textArea = new JTextArea();
+        textArea.setEditable(false);
+        textArea.setBackground(Color.BLACK);
+        textArea.setForeground(Color.GREEN);
+        textArea.setFont(new Font("Consolas", Font.PLAIN, 14));
+        add(new JScrollPane(textArea), BorderLayout.CENTER);
+
+        JPanel bottomPanel = new JPanel(new BorderLayout());
+        inputField = new JTextField();
+        bottomPanel.add(inputField, BorderLayout.CENTER);
+
+        JPanel buttonPanel = new JPanel(new GridLayout(1, 2));
+        sendButton = new JButton("Gửi");
+        clearButton = new JButton("Xóa lịch sử");
+        buttonPanel.add(sendButton);
+        buttonPanel.add(clearButton);
+        bottomPanel.add(buttonPanel, BorderLayout.EAST);
+
+        add(bottomPanel, BorderLayout.SOUTH);
+
+        sendButton.addActionListener(e -> sendMessage());
+        inputField.addActionListener(e -> sendMessage());
+        clearButton.addActionListener(e -> textArea.setText(""));
+
+        try {
+            socket = new DatagramSocket(serverPort);
+            textArea.append("Server đã khởi động tại cổng " + serverPort + "\n");
+
+            Thread receiveThread = new Thread(() -> {
+                try {
+                    while (true) {
+                        byte[] buffer = new byte[1024];
+                        DatagramPacket packet = new DatagramPacket(buffer, buffer.length);
+                        socket.receive(packet);
+
+                        String received = new String(packet.getData(), 0, packet.getLength());
+
+                        InetSocketAddress clientAddress =
+                                new InetSocketAddress(packet.getAddress(), packet.getPort());
+                        if (!clients.contains(clientAddress)) {
+                            clients.add(clientAddress);
+                        }
+
+                        // In ra cho server xem (có thể giữ lại địa chỉ để debug)
+                        textArea.append("Client: " + received + "\n");
+
+                        // Gửi lại cho tất cả client nhưng chỉ gửi nội dung (không kèm địa chỉ)
+                        broadcast(received);
+                    }
+                } catch (Exception ex) {
+                    ex.printStackTrace();
+                }
+            });
+            receiveThread.start();
+
+        } catch (Exception ex) {
+            ex.printStackTrace();
+        }
+
+        setVisible(true);
+    }
+
+    private void sendMessage() {
+        try {
+            String msg = inputField.getText().trim();
+            if (!msg.isEmpty()) {
+                broadcast("Server: " + msg);
+                textArea.append("Server: " + msg + "\n");
+                inputField.setText("");
+            }
+        } catch (Exception ex) {
+            ex.printStackTrace();
+        }
+    }
+
+    // Gửi tin nhắn đến tất cả client
+    private void broadcast(String msg) throws Exception {
+        byte[] buffer = msg.getBytes();
+        for (InetSocketAddress client : clients) {
+            DatagramPacket packet = new DatagramPacket(buffer, buffer.length,
+                    client.getAddress(), client.getPort());
+            socket.send(packet);
+        }
+    }
+
+    public static void main(String[] args) {
+        SwingUtilities.invokeLater(Server::new);
+    }
+}

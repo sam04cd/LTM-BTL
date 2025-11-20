@@ -2,83 +2,296 @@ package sam;
 
 import javax.swing.*;
 import java.awt.*;
+import java.io.*;
 import java.net.*;
+import java.nio.charset.StandardCharsets;
+import java.util.concurrent.ConcurrentHashMap;
 
-public class Server extends JFrame {
-    private JTextArea logArea;
-    private JTextField inputField;
-    private JButton sendButton;
+public class Server {
 
-    private static final int SERVER_PORT = 2004;  // nhận từ client
-    private static final int CLIENT_PORT = 2005;  // gửi broadcast đến client
+    private static final int UDP_RECV_PORT = 5000;
+    private static final int UDP_BROADCAST_PORT = 5001;
+    private static final int TCP_FILE_PORT = 6000;
     private static final String BROADCAST_IP = "255.255.255.255";
 
+    private JFrame frame;
+    private JPanel panelMessages;
+    private JScrollPane scrollPane;
+    private JTextField input;
+    private JTextArea onlineArea;
+    private DatagramSocket udpRecvSocket;
+    private final ConcurrentHashMap<String, String> online = new ConcurrentHashMap<>();
+    private final File uploadsDir = new File("uploads");
+
     public Server() {
-        setTitle("UDP Server (Broadcast)");
-        setSize(500, 400);
-        setDefaultCloseOperation(EXIT_ON_CLOSE);
-        setLocationRelativeTo(null);
+        if (!uploadsDir.exists()) uploadsDir.mkdirs();
 
-        // --- khu vực hiển thị ---
-        logArea = new JTextArea();
-        logArea.setEditable(false);
-        add(new JScrollPane(logArea), BorderLayout.CENTER);
+        // Try to set FlatLaf if available, otherwise fallback to system LAF
+        try {
+            Class<?> lafClass = Class.forName("com.formdev.flatlaf.FlatDarkLaf");
+            LookAndFeel laf = (LookAndFeel) lafClass.getDeclaredConstructor().newInstance();
+            UIManager.setLookAndFeel(laf);
+        } catch (ClassNotFoundException cnf) {
+            try {
+                UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
+            } catch (Exception ex) {
+                ex.printStackTrace();
+            }
+        } catch (Exception ex) {
+            ex.printStackTrace();
+        }
 
-        // --- khu vực nhập + nút gửi ---
-        inputField = new JTextField();
-        sendButton = new JButton("Gửi");
-
-        JPanel bottomPanel = new JPanel(new BorderLayout());
-        bottomPanel.add(inputField, BorderLayout.CENTER);
-        bottomPanel.add(sendButton, BorderLayout.EAST);
-        add(bottomPanel, BorderLayout.SOUTH);
-
-        // Nhấn Enter hoặc nút Gửi đều gửi được
-        inputField.addActionListener(e -> sendMessage(inputField.getText()));
-        sendButton.addActionListener(e -> sendMessage(inputField.getText()));
-
-        setVisible(true);
-
-        // luồng nhận dữ liệu từ client
-        new Thread(this::receiveFromClients).start();
+        createUI();
+        startUdpReceiver();
+        startTcpFileServer();
     }
 
-    private void sendMessage(String msg) {
-        if (!msg.isEmpty()) {
-            try (DatagramSocket socket = new DatagramSocket()) {
-                socket.setBroadcast(true);
-                String fullMsg = "Server: " + msg;
-                byte[] data = fullMsg.getBytes("UTF-8");
-                DatagramPacket packet = new DatagramPacket(
-                        data, data.length,
-                        InetAddress.getByName(BROADCAST_IP), CLIENT_PORT
-                );
+    private void createUI() {
+        frame = new JFrame("SERVER • Messenger");
+        frame.setSize(1100, 720);
+        frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+        frame.getContentPane().setBackground(new Color(30, 30, 36));
 
-                socket.send(packet);
-                logArea.append(fullMsg + "\n");
-                inputField.setText("");
-            } catch (Exception e) {
-                logArea.append("Lỗi gửi: " + e.getMessage() + "\n");
+        // Header
+        JPanel header = new JPanel(new BorderLayout());
+        header.setBackground(new Color(43, 43, 51));
+        header.setBorder(BorderFactory.createMatteBorder(0, 0, 1, 0, new Color(60, 60, 70)));
+        header.setPreferredSize(new Dimension(0, 65));
+
+        JLabel title = new JLabel("SERVER - Chat Room", SwingConstants.CENTER);
+        title.setFont(new Font("Segoe UI", Font.BOLD, 20));
+        title.setForeground(new Color(100, 255, 100));
+        header.add(title, BorderLayout.CENTER);
+
+        JLabel status = new JLabel("● Đang chạy");
+        status.setForeground(new Color(80, 255, 80));
+        status.setBorder(BorderFactory.createEmptyBorder(0, 0, 0, 20));
+        header.add(status, BorderLayout.EAST);
+
+        // Messages
+        panelMessages = new JPanel();
+        panelMessages.setLayout(new BoxLayout(panelMessages, BoxLayout.Y_AXIS));
+        panelMessages.setBackground(new Color(35, 35, 42));
+
+        scrollPane = new JScrollPane(panelMessages);
+        scrollPane.setBorder(null);
+        scrollPane.setHorizontalScrollBarPolicy(JScrollPane.HORIZONTAL_SCROLLBAR_NEVER);
+        scrollPane.getVerticalScrollBar().setUnitIncrement(16);
+
+        // Sidebar
+        JPanel sidebar = new JPanel(new BorderLayout());
+        sidebar.setBackground(new Color(43, 43, 51));
+        sidebar.setPreferredSize(new Dimension(280, 0));
+        sidebar.setBorder(BorderFactory.createMatteBorder(1, 1, 0, 0, new Color(60, 60, 70)));
+
+        JLabel onlineTitle = new JLabel("Đang online");
+        onlineTitle.setFont(new Font("Segoe UI", Font.BOLD, 16));
+        onlineTitle.setForeground(new Color(100, 255, 100));
+        onlineTitle.setBorder(BorderFactory.createEmptyBorder(20, 20, 10, 0));
+        sidebar.add(onlineTitle, BorderLayout.NORTH);
+
+        onlineArea = new JTextArea();
+        onlineArea.setEditable(false);
+        onlineArea.setBackground(new Color(43, 43, 51));
+        onlineArea.setForeground(Color.WHITE);
+        onlineArea.setFont(new Font("Segoe UI", Font.PLAIN, 15));
+        sidebar.add(new JScrollPane(onlineArea), BorderLayout.CENTER);
+
+        // Input
+        JPanel inputPanel = new JPanel(new BorderLayout(10, 10));
+        inputPanel.setBackground(new Color(43, 43, 51));
+        inputPanel.setBorder(BorderFactory.createEmptyBorder(15, 15, 15, 15));
+
+        input = new JTextField();
+        input.setFont(new Font("Segoe UI", Font.PLAIN, 16));
+        input.setBackground(new Color(60, 60, 70));
+        input.setForeground(Color.WHITE);
+        input.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createLineBorder(new Color(80, 80, 90), 2, true),
+                BorderFactory.createEmptyBorder(12, 12, 12, 12)));
+        input.setCaretColor(Color.WHITE);
+        inputPanel.add(input, BorderLayout.CENTER);
+
+        JButton sendBtn = new JButton("Broadcast");
+        sendBtn.setBackground(new Color(0, 200, 100));
+        sendBtn.setForeground(Color.WHITE);
+        sendBtn.setFont(new Font("Segoe UI", Font.BOLD, 14));
+        sendBtn.setBorderPainted(false);
+        sendBtn.setFocusPainted(false);
+        sendBtn.addActionListener(e -> {
+            String text = input.getText().trim();
+            if (!text.isEmpty()) {
+                broadcastUdp("Server: " + text);
+                addMessageBubble("Server", text, true);
+                input.setText("");
             }
+        });
+        inputPanel.add(sendBtn, BorderLayout.EAST);
+
+        frame.add(header, BorderLayout.NORTH);
+        frame.add(scrollPane, BorderLayout.CENTER);
+        frame.add(sidebar, BorderLayout.EAST);
+        frame.add(inputPanel, BorderLayout.SOUTH);
+
+        frame.setLocationRelativeTo(null);
+        frame.setVisible(true);
+    }
+
+    private void addMessageBubble(String name, String message, boolean mine) {
+        JPanel wrapper = new JPanel(new GridBagLayout());
+        wrapper.setOpaque(false);
+        wrapper.setBorder(BorderFactory.createEmptyBorder(8, 20, 8, 20));
+
+        RoundedPanel bubble = new RoundedPanel(mine ? new Color(0, 200, 100) : new Color(60, 60, 70), 20);
+        bubble.setLayout(new BoxLayout(bubble, BoxLayout.Y_AXIS));
+        bubble.setBorder(BorderFactory.createEmptyBorder(10, 14, 10, 14));
+
+        JLabel nameLabel = new JLabel(name);
+        nameLabel.setFont(new Font("Segoe UI", Font.BOLD, 13));
+        nameLabel.setForeground(mine ? new Color(200, 255, 200) : new Color(180, 180, 180));
+
+        JLabel msgLabel = new JLabel("<html><div style='max-width: 500px;'>" +
+                message.replace("&", "&amp;").replace("<", "&lt;").replace("\n", "<br>") +
+                "</div></html>");
+        msgLabel.setFont(new Font("Segoe UI", Font.PLAIN, 16));
+        msgLabel.setForeground(Color.WHITE);
+
+        bubble.add(nameLabel);
+        bubble.add(Box.createVerticalStrut(4));
+        bubble.add(msgLabel);
+
+        GridBagConstraints gbc = new GridBagConstraints();
+        gbc.weightx = 1.0;
+        gbc.fill = GridBagConstraints.HORIZONTAL;
+        gbc.anchor = mine ? GridBagConstraints.EAST : GridBagConstraints.WEST;
+        wrapper.add(bubble, gbc);
+
+        panelMessages.add(wrapper);
+        panelMessages.add(Box.createVerticalStrut(8));
+        SwingUtilities.invokeLater(() -> scrollPane.getVerticalScrollBar().setValue(scrollPane.getVerticalScrollBar().getMaximum()));
+    }
+
+    private void updateOnlineList() {
+        String list = String.join("\n", online.values());
+        SwingUtilities.invokeLater(() -> onlineArea.setText(list.isEmpty() ? "Chưa có ai" : list));
+    }
+
+    private void broadcastUdp(String message) {
+        new Thread(() -> {
+            DatagramSocket s = null;
+            try {
+                byte[] data = message.getBytes(StandardCharsets.UTF_8);
+                InetAddress addr = InetAddress.getByName(BROADCAST_IP);
+                DatagramPacket packet = new DatagramPacket(data, data.length, addr, UDP_BROADCAST_PORT);
+                s = new DatagramSocket();
+                s.setBroadcast(true);
+                s.send(packet);
+            } catch (Exception e) { e.printStackTrace();
+            } finally {
+                if (s != null) s.close();
+            }
+        }).start();
+    }
+
+    private void startUdpReceiver() {
+        new Thread(() -> {
+            try {
+                udpRecvSocket = new DatagramSocket(UDP_RECV_PORT);
+                byte[] buf = new byte[8192];
+                while (true) {
+                    DatagramPacket p = new DatagramPacket(buf, buf.length);
+                    udpRecvSocket.receive(p);
+                    String msg = new String(p.getData(), 0, p.getLength(), StandardCharsets.UTF_8).trim();
+                    String key = p.getAddress().getHostAddress() + ":" + p.getPort();
+
+                    if (msg.startsWith("HELLO:")) {
+                        String name = msg.substring(6);
+                        online.put(key, name);
+                        updateOnlineList();
+                        broadcastUdp("ONLINE:" + String.join(",", online.values()));
+                        addMessageBubble("System", name + " đã tham gia", false);
+                    } else if (msg.startsWith("BYE:")) {
+                        String name = online.remove(key);
+                        if (name != null) {
+                            updateOnlineList();
+                            broadcastUdp("ONLINE:" + String.join(",", online.values()));
+                            addMessageBubble("System", name + " đã thoát", false);
+                        }
+                    } else {
+                        addMessageBubble(online.getOrDefault(key, "Unknown"), msg, false);
+                    }
+                }
+            } catch (Exception e) { e.printStackTrace(); }
+        }).start();
+    }
+
+    private void startTcpFileServer() {
+        new Thread(() -> {
+            try (ServerSocket server = new ServerSocket(TCP_FILE_PORT)) {
+                System.out.println("TCP File Server chạy trên port " + TCP_FILE_PORT);
+                while (true) {
+                    Socket client = server.accept();
+                    new Thread(() -> handleFileClient(client)).start();
+                }
+            } catch (Exception e) { e.printStackTrace(); }
+        }).start();
+    }
+
+    private void handleFileClient(Socket client) {
+        try (Socket c = client;
+             InputStream in = c.getInputStream();
+             OutputStream out = c.getOutputStream();
+             BufferedReader br = new BufferedReader(new InputStreamReader(in, StandardCharsets.UTF_8));
+             BufferedWriter bw = new BufferedWriter(new OutputStreamWriter(out, StandardCharsets.UTF_8))) {
+
+            String header = br.readLine();
+            if (header != null && header.startsWith("UPLOAD:")) {
+                String[] parts = header.split(":", 3);
+                String fname = new File(parts[1]).getName();
+                long size = Long.parseLong(parts[2]);
+                File saved = new File(uploadsDir, System.currentTimeMillis() + "_" + fname);
+
+                try (FileOutputStream fos = new FileOutputStream(saved)) {
+                    byte[] buffer = new byte[8192];
+                    long remaining = size;
+                    while (remaining > 0) {
+                        int read = in.read(buffer, 0, (int) Math.min(buffer.length, remaining));
+                        if (read == -1) break;
+                        fos.write(buffer, 0, read);
+                        remaining -= read;
+                    }
+                }
+
+                bw.write("OK:" + saved.getName() + "\n");
+                bw.flush();
+
+                broadcastUdp("FILE:" + saved.getName() + ":Server");
+                addMessageBubble("System", "Nhận file: " + saved.getName(), false);
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+            addMessageBubble("System", "Lỗi nhận file: " + e.getMessage(), false);
         }
     }
 
-    private void receiveFromClients() {
-        try (DatagramSocket socket = new DatagramSocket(SERVER_PORT)) {
-            byte[] buf = new byte[1024];
-            while (true) {
-                DatagramPacket packet = new DatagramPacket(buf, buf.length);
-                socket.receive(packet);
+    class RoundedPanel extends JPanel {
+        private final Color color;
+        private final int radius;
 
-                String msg = new String(packet.getData(), 0, packet.getLength(), "UTF-8");
-                String from = packet.getAddress().getHostAddress();
-                logArea.append("Client (" + from + "): " + msg + "\n");
+        RoundedPanel(Color color, int radius) {
+            this.color = color;
+            this.radius = radius;
+            setOpaque(false);
+        }
 
-                // Gửi broadcast lại cho toàn bộ client
-                sendMessage(   msg);
-            }
-        } catch (Exception e) {
-            logArea.append("Lỗi nhận: " + e.getMessage() + "\n");
+        @Override
+        protected void paintComponent(Graphics g) {
+            Graphics2D g2 = (Graphics2D) g.create();
+            g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+            g2.setColor(color);
+            g2.fillRoundRect(0, 0, getWidth(), getHeight(), radius, radius);
+            super.paintComponent(g);
+            g2.dispose();
         }
     }
 

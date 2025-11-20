@@ -1,0 +1,127 @@
+package sam;
+
+import javax.swing.*;
+import java.awt.*;
+import java.awt.event.*;
+import java.io.*;
+import java.net.*;
+import java.util.*;
+
+public class Server extends JFrame {
+    private JTextArea logArea;
+    private JTextField inputField;
+    private JButton sendButton;
+
+    private static final int SERVER_PORT = 2004;
+    private DatagramSocket socket;
+    private Set<SocketAddress> clients = new HashSet<>();
+
+    public Server() {
+        setTitle("UDP Server (Multi Client)");
+        setSize(500, 400);
+        setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+
+        logArea = new JTextArea();
+        logArea.setEditable(false);
+        JScrollPane scrollPane = new JScrollPane(logArea);
+
+        inputField = new JTextField();
+        sendButton = new JButton("Gửi");
+
+        JPanel panel = new JPanel(new BorderLayout());
+        panel.add(inputField, BorderLayout.CENTER);
+        panel.add(sendButton, BorderLayout.EAST);
+
+        add(scrollPane, BorderLayout.CENTER);
+        add(panel, BorderLayout.SOUTH);
+
+        try {
+            socket = new DatagramSocket(SERVER_PORT);
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+
+        // Load lịch sử
+        loadHistory();
+
+        sendButton.addActionListener(e -> sendMessage());
+        inputField.addActionListener(e -> sendMessage());
+
+        // Luồng nhận
+        new Thread(this::receiveMessages).start();
+
+        setVisible(true);
+    }
+
+    private void sendMessage() {
+        try {
+            String message = inputField.getText();
+            if (message.isEmpty()) return;
+
+            for (SocketAddress client : clients) {
+                byte[] buffer = message.getBytes();
+                DatagramPacket packet = new DatagramPacket(buffer, buffer.length, client);
+                socket.send(packet);
+            }
+
+            logArea.append("Server: " + message + "\n");
+            saveHistory("Server: " + message);
+
+            inputField.setText("");
+        } catch (Exception ex) {
+            ex.printStackTrace();
+        }
+    }
+
+    private void receiveMessages() {
+        try {
+            byte[] buffer = new byte[1024];
+            while (true) {
+                DatagramPacket packet = new DatagramPacket(buffer, buffer.length);
+                socket.receive(packet);
+                String received = new String(packet.getData(), 0, packet.getLength());
+
+                SocketAddress clientAddress = packet.getSocketAddress();
+                clients.add(clientAddress);
+
+                String log = "Client (" + clientAddress + "): " + received;
+                logArea.append(log + "\n");
+                saveHistory(log);
+
+                // Gửi lại cho tất cả client (chat group)
+                for (SocketAddress client : clients) {
+                    if (!client.equals(clientAddress)) {
+                        byte[] buf = received.getBytes();
+                        DatagramPacket sendPacket = new DatagramPacket(buf, buf.length, client);
+                        socket.send(sendPacket);
+                    }
+                }
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    private void loadHistory() {
+        try (BufferedReader reader = new BufferedReader(new FileReader("history.txt"))) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                logArea.append(line + "\n");
+            }
+        } catch (IOException e) {
+            // bỏ qua nếu chưa có file
+        }
+    }
+
+    private void saveHistory(String message) {
+        try (PrintWriter writer = new PrintWriter(new FileWriter("history.txt", true))) {
+            writer.println(message);
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
+    public static void main(String[] args) {
+        new Server();
+    }
+}

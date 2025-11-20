@@ -1,0 +1,125 @@
+package sam;
+
+import javax.swing.*;
+import java.awt.*;
+import java.io.*;
+import java.net.*;
+
+public class Server extends JFrame {
+    private JTextArea chatArea;
+    private JTextField inputField;
+    private JButton sendButton, deleteButton;
+    private DatagramSocket socket;
+    private static final int SERVER_PORT = 2004;
+
+    private FileOutputStream fos = null;
+    private String currentFileName = "received_file.txt";
+
+    public Server() {
+        setTitle("UDP Server (Broadcast)");
+        setSize(400, 400);
+        setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+        setLayout(new BorderLayout());
+
+        chatArea = new JTextArea();
+        chatArea.setEditable(false);
+        add(new JScrollPane(chatArea), BorderLayout.CENTER);
+
+        JPanel bottomPanel = new JPanel(new BorderLayout());
+        inputField = new JTextField();
+        sendButton = new JButton("Gửi");
+        deleteButton = new JButton("Xóa");
+
+        bottomPanel.add(inputField, BorderLayout.CENTER);
+
+        JPanel buttonPanel = new JPanel();
+        buttonPanel.add(sendButton);
+        buttonPanel.add(deleteButton);
+        bottomPanel.add(buttonPanel, BorderLayout.EAST);
+
+        add(bottomPanel, BorderLayout.SOUTH);
+
+        try {
+            socket = new DatagramSocket(SERVER_PORT);
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+
+        // Gửi tin nhắn
+        sendButton.addActionListener(e -> sendMessage());
+
+        // Xóa tin cuối
+        deleteButton.addActionListener(e -> deleteLastMessage());
+
+        // Thread nhận dữ liệu
+        new Thread(this::receiveMessages).start();
+
+        setVisible(true);
+    }
+
+    private void sendMessage() {
+        try {
+            String msg = inputField.getText().trim();
+            if (!msg.isEmpty()) {
+                byte[] buffer = msg.getBytes();
+                DatagramPacket packet = new DatagramPacket(buffer, buffer.length,
+                        InetAddress.getByName("255.255.255.255"), SERVER_PORT);
+                socket.send(packet);
+                chatArea.append("Me: " + msg + "\n");
+                inputField.setText("");
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    private void deleteLastMessage() {
+        String text = chatArea.getText();
+        int lastLine = text.lastIndexOf("\n");
+        if (lastLine != -1) {
+            chatArea.setText(text.substring(0, lastLine));
+        } else {
+            chatArea.setText("");
+        }
+    }
+
+    private void receiveMessages() {
+        try {
+            byte[] buffer = new byte[1024];
+            while (true) {
+                DatagramPacket packet = new DatagramPacket(buffer, buffer.length);
+                socket.receive(packet);
+                String msg = new String(packet.getData(), 0, packet.getLength());
+
+                // Nhận tên file
+                if (msg.startsWith("FILENAME:")) {
+                    currentFileName = msg.substring(9);
+                    fos = new FileOutputStream(currentFileName);
+                    chatArea.append(" Bắt đầu nhận file: " + currentFileName + "\n");
+                }
+                // Nhận kết thúc file
+                else if (msg.equals("EOF")) {
+                    if (fos != null) {
+                        fos.close();
+                        fos = null;
+                        chatArea.append(" Đã nhận xong file: " + currentFileName + "\n");
+                    }
+                }
+                // Nhận dữ liệu file
+                else if (fos != null) {
+                    fos.write(packet.getData(), 0, packet.getLength());
+                }
+                // Nhận tin nhắn thường
+                else {
+                    chatArea.append("Client: " + msg + "\n");
+                }
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    public static void main(String[] args) {
+        new Server();
+    }
+}
