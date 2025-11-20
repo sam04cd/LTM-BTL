@@ -38,17 +38,30 @@ Tuy không đảm bảo tin nhắn đến đúng thứ tự, nhưng UDP phù h�
 - **Giao thức mạng:** UDP (User Datagram Protocol)  
 - **IDE:** Eclipse  
 ## 3. Hình ảnh các chức năng
-<p align = "center"><img width="603" height="483" alt="image" src="https://github.com/user-attachments/assets/145d9467-61d1-4d7e-a740-61c4e8d7be93" /></p>    
+<p align="center">
+  <img src="images/hinh2.jpg" alt="Ảnh 2" width="700"/>
+</p>
 
 <p align = "center">Hình 1: Giao diện server </p>
 
-<p align = "center"><img width="476" height="470" alt="image" src="https://github.com/user-attachments/assets/0ed8248b-c888-4a8f-9886-0afb88c3e149" /></p>    
+<p align="center">
+  <img src="images/hinh3.jpg" alt="Ảnh 2" width="700"/>
+</p>  
 
-<p align = "center">Hình 2: Giao diện client </p>
+<p align = "center">Hình 3: Nhập tên cho client </p>
 
-<p align = "center"><img width="1593" height="474" alt="image" src="https://github.com/user-attachments/assets/e29a9a0d-060a-42a8-b36e-41602fd0b90f" /></p>    
+<p align="center">
+  <img src="images/hinh1.jpg" alt="Ảnh 2" width="700"/>
+</p>  
 
-<p align = "center">Hình 3: Server nhắn tin cho client </p>
+<p align = "center">Hình 3: Giao diện client </p>
+
+<p align="center">
+  <img src="images/hinh4.jpg" alt="Ảnh 2" width="700"/>
+</p> 
+
+<p align = "center">Hình 4: Server nhắn tin cho client </p>
+
 
 ## 4. Các bước cài đặt
 ### Yêu cầu hệ thống
